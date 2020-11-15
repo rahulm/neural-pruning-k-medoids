@@ -34,23 +34,17 @@ class Model(nn.Module):
         self.flatten = nn.Flatten()
 
         self.fc_1 = nn.Linear(
-            in_features=self.input_dim,
-            out_features=layer_1_dim,
-            bias=False,  # bias=True
+            in_features=self.input_dim, out_features=layer_1_dim, bias=True
         )
         self.relu_1 = nn.ReLU(inplace=True)
 
         self.fc_2 = nn.Linear(
-            in_features=layer_1_dim,
-            out_features=layer_2_dim,
-            bias=False,  # bias=True
+            in_features=layer_1_dim, out_features=layer_2_dim, bias=True
         )
         self.relu_2 = nn.ReLU(inplace=True)
 
         self.fc_output = nn.Linear(
-            in_features=layer_2_dim,
-            out_features=output_dim,
-            bias=False,  # bias=True
+            in_features=layer_2_dim, out_features=output_dim, bias=True
         )
 
         # TODO: Maybe create a base class that requires a list or sequential
