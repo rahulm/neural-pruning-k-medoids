@@ -172,3 +172,39 @@ def prune_network_with_craig(
 
     print(original_model)
 
+
+### CLI
+
+
+def get_args():
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Prune the given neural network with CRAIG."
+    )
+
+    parser.add_argument(
+        "-c",
+        "--config",
+        type=str,
+        required=True,
+        help="Path to pruning config JSON file.",
+    )
+
+    return parser.parse_args()
+
+
+def main() -> None:
+    args = get_args()
+    print(args)
+
+    config: prune_config_utils.PruneConfig = prune_config_utils.get_config_from_file(
+        args.config
+    )
+
+    prune_network_with_craig(config)
+
+
+if __name__ == "__main__":
+    main()
+
