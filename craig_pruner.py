@@ -49,6 +49,7 @@ def prune_fc_layer_with_craig(
     original_num_nodes: int = curr_layer.out_features
     original_nodes = list(range(original_num_nodes))
 
+    # TODO: Instead of percent of nodes, maybe get all weights from CRAIG and take top percent?
     target_num_nodes: int = int(
         (1 - prune_percent_per_layer) * original_num_nodes
     )
@@ -139,7 +140,6 @@ def prune_network_with_craig(
         )
 
     # Save newly pruned model+weights.
-    # TODO: Maybe save model config?
     pruned_output_folder: Text = prune_config.pruned_model_out_folder
     if not os.path.exists(pruned_output_folder):
         os.makedirs(pruned_output_folder)
