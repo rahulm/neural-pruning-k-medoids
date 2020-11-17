@@ -5,6 +5,7 @@ import os
 from typing import Any, Dict, List, Set, Text
 
 import numpy as np
+import sklearn.metrics
 import torch
 from torch import nn
 
@@ -19,11 +20,22 @@ FILE_NAME_PRUNE_CONFIG: Text = "config-prune.json"
 
 class SimilarityMetrics:
     @staticmethod
-    def weights_covariance(layer):
-        # Calculate covariance. Each row corresponds to a node.
-        layer_weights = layer.weight
-        node_covariance = np.cov(layer_weights.cpu().detach().numpy())
+    def weights_covariance(layer, **kwargs):
+        """Calculate covariance. Each row corresponds to a node."""
+        layer_weights = layer.weight.cpu().detach().numpy()
+        node_covariance = np.cov(layer_weights)
         return node_covariance
+
+    @staticmethod
+    def euclidean_distance(layer, **kwargs):
+        """
+        Calculates euclidean distance of nodes, treats weights as coordinates.
+        """
+        layer_weights = layer.weight.cpu().detach().numpy()
+        dists = sklearn.metrics.pairwise_distances(
+            layer_weights, metric="euclidean", n_jobs=-1
+        )
+        return np.max(dists) - dists
 
 
 def prune_fc_layer_with_craig(
