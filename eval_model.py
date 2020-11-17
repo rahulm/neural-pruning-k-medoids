@@ -36,6 +36,7 @@ def evaluate_model(
 def evaluate_model_from_checkpoint_file(
     model_path_checkpoint: Text,
     dataset_name: Text,
+    split: Text,
     batch_size: int,
     use_gpu: bool,
 ) -> Tuple[float, float]:
@@ -46,7 +47,7 @@ def evaluate_model_from_checkpoint_file(
     dataloader = torch.utils.data.DataLoader(
         train_utils.DATASET_FUNCTIONS[dataset_name](
             train_utils.DATA_FOLDER_PATH,
-            train=False,
+            train=True if (split == "train") else False,
             download=True,
             transform=train_utils.DATASET_TRANSFORMS[dataset_name],
         ),
@@ -98,6 +99,16 @@ def get_args():
         help="Use CPU instead of GPU.",
     )
 
+    parser.add_argument(
+        "-s",
+        "--split",
+        type=str,
+        required=False,
+        default="test",
+        choices=("test", "train"),
+        help="The split to evaluate on.",
+    )
+
     return parser.parse_args()
 
 
@@ -106,12 +117,13 @@ def main() -> None:
     test_acc, test_loss = evaluate_model_from_checkpoint_file(
         model_path_checkpoint=args.model_checkpoint,
         dataset_name=args.dataset,
+        split=args.split,
         batch_size=args.batch_size,
         use_gpu=not args.no_cuda,
     )
     print(
-        "{} - Test || Accuracy: {:.4f}% | Average loss: {:.4f}".format(
-            args.dataset, test_acc, test_loss
+        "{} - {} || Accuracy: {:.4f} | Average loss: {:.4f}".format(
+            args.dataset, args.split, test_acc, test_loss
         )
     )
 
