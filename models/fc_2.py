@@ -14,7 +14,7 @@ TODO: Experiment with some possible similarity matrices.
 
 """
 
-from typing import Sequence
+from typing import Sequence, Text
 
 import numpy as np
 import torch
@@ -22,6 +22,8 @@ from torch import nn
 
 
 class Model(nn.Module):
+    ARCHITECTURE_NAME: Text = "fc_2"
+
     def __init__(
         self,
         input_shape: Sequence,

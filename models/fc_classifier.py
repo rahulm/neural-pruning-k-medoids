@@ -14,6 +14,8 @@ from torch import nn
 
 
 class Model(nn.Module):
+    ARCHITECTURE_NAME: Text = "fc_classifier"
+
     def __init__(
         self, input_shape: Sequence, layers: Sequence[int], output_dim: int,
     ) -> None:
