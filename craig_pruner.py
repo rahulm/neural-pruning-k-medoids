@@ -98,31 +98,14 @@ def prune_network_with_craig(
     one sequence, and that there are no non-FC layers after the last FC layer
     of that sequence."""
 
-    load_location = None  # Can make this cpu or cuda
-    original_model: Any
-
-    model_config: model_config_utils.ModelConfig = prune_config.model_config
-
-    # Currently, only supporting fc_2
-    if model_config.model_architecture == "fc_2":
-        from models.fc_2 import Model
-
-        model_path: Text = os.path.join(
-            model_config.model_folder, FILE_NAME_MODEL
-        )
-        original_model = torch.load(model_path, map_location=load_location)
-    else:
-        print(
-            "Model architecture is not supported: {}".format(
-                model_config.model_architecture
-            )
-        )
-        return
+    model_path: Text = prune_config.original_model_path
+    load_location = torch.device("cpu")  # Can make this None, as default
+    model = torch.load(model_path, map_location=load_location)
 
     # Ignore non-FC layers, following assumption in docstring.
     fc_layers: List = [
         layer
-        for layer in original_model.sequential_module
+        for layer in model.sequential_module
         if isinstance(layer, nn.Linear)
     ]
 
@@ -148,18 +131,20 @@ def prune_network_with_craig(
     out_weights_path: Text = os.path.join(
         pruned_output_folder, FILE_NAME_WEIGHT_ONLY
     )
-    torch.save(original_model, out_model_path)
-    torch.save(original_model.state_dict(), out_weights_path)
+    torch.save(model, out_model_path)
+    torch.save(model.state_dict(), out_weights_path)
+    print(model)
 
     # Save model config.
     # TODO: Support more model architectures.
     out_model_config_path: Text = os.path.join(
         pruned_output_folder, FILE_NAME_MODEL_CONFIG
     )
+    model_config: model_config_utils.ModelConfig = prune_config.model_config
+    out_model_config: Dict
     if model_config.model_architecture == "fc_2":
-        out_model_config: Dict = {
+        out_model_config = {
             "model_architecture": "fc_2",
-            "model_folder": pruned_output_folder,
             "model_params": {
                 "input_shape": [28, 28],
                 "layer_1_dim": fc_layers[0].out_features,
@@ -167,10 +152,20 @@ def prune_network_with_craig(
                 "output_dim": 10,
             },
         }
-        with open(out_model_config_path, "w") as out_model_config_file:
-            json.dump(out_model_config, out_model_config_file)
-
-    print(original_model)
+    elif model_config.model_architecture == "fc_classifier":
+        out_model_config = {
+            "model_architecture": "fc_classifier",
+            "model_params": {
+                "input_shape": [28, 28],
+                "layers": [l.out_features for l in fc_layers],
+                "output_dim": 10,
+            },
+        }
+    else:
+        # Not supported.
+        return
+    with open(out_model_config_path, "w") as out_model_config_file:
+        json.dump(out_model_config, out_model_config_file)
 
 
 ### CLI
