@@ -7,18 +7,7 @@ import torch
 import torch.nn.functional as F
 import torchvision
 
-from utils import model_config_utils
-
-DATA_FOLDER_PATH: Text = os.path.join("data", "pytorch")
-DATASET_FUNCTIONS: Dict[Text, Callable] = {"mnist": torchvision.datasets.MNIST}
-DATASET_TRANSFORMS: Dict = {
-    "mnist": torchvision.transforms.Compose(
-        [
-            torchvision.transforms.ToTensor(),
-            torchvision.transforms.Normalize((0.1307,), (0.3081,)),
-        ]
-    )
-}
+from utils import model_config_utils, train_utils
 
 
 def evaluate_model(
@@ -67,11 +56,11 @@ def evaluate_model_from_config(
         )
 
     dataloader = torch.utils.data.DataLoader(
-        DATASET_FUNCTIONS[dataset_name](
-            DATA_FOLDER_PATH,
+        train_utils.DATASET_FUNCTIONS[dataset_name](
+            train_utils.DATA_FOLDER_PATH,
             train=False,
             download=True,
-            transform=DATASET_TRANSFORMS[dataset_name],
+            transform=train_utils.DATASET_TRANSFORMS[dataset_name],
         ),
         batch_size=batch_size,
         shuffle=True,
@@ -101,7 +90,7 @@ def get_args():
         "--dataset",
         type=str,
         required=True,
-        choices=DATASET_FUNCTIONS.keys(),
+        choices=train_utils.DATASET_FUNCTIONS.keys(),
         help="Name of dataset.",
     )
 

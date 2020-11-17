@@ -2,9 +2,12 @@
 
 import csv
 import os
-from typing import List, Text
+from typing import Callable, Dict, List, Text
 
 import matplotlib.pyplot as plt
+import torch
+import torch.nn.functional as F
+import torchvision
 
 FILE_NAME_CSV: Text = "vals.csv"
 FILE_NAME_PLOT: Text = "plot.png"
@@ -69,3 +72,14 @@ class StatCounter:
             )
         )
 
+
+DATA_FOLDER_PATH: Text = os.path.join("data", "pytorch")
+DATASET_FUNCTIONS: Dict[Text, Callable] = {"mnist": torchvision.datasets.MNIST}
+DATASET_TRANSFORMS: Dict = {
+    "mnist": torchvision.transforms.Compose(
+        [
+            torchvision.transforms.ToTensor(),
+            torchvision.transforms.Normalize((0.1307,), (0.3081,)),
+        ]
+    )
+}
