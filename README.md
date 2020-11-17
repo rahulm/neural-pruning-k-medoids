@@ -30,26 +30,13 @@ Note that some fields are ignored in certain scripts.
 ### Prune config
 ```json
 {
-    "config_id": "test_prune_config-lenet_300_100",
-    "model_config": {
-        "model_architecture": "fc_2",
-        "model_params": {
-            "input_shape": [
-                28,
-                28
-            ],
-            "layer_1_dim": 300,
-            "layer_2_dim": 100,
-            "output_dim": 10
-        }
-    },
+    "config_id": "config-prune-lenet_300_100-v1",
     "prune_type": "craig",
     "prune_params": {
         "prune_percent_per_layer": 0.3,
         "similarity_metric": "weights_covariance"
     },
-    "original_model_path": "experiments/test-1/checkpoints/checkpoint-epoch_40-model.pth",
-    "pruned_model_out_folder": "experiments/test-1/pruned"
+    "original_model_path": "experiments/lenet_300_100-1/training/checkpoints/checkpoint-epoch_40-model.pth"
 }
 ```
 

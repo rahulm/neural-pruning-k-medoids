@@ -9,11 +9,12 @@ import torch
 from torch import nn
 
 import craig
-from utils import model_config_utils, prune_config_utils
+from utils import general_config_utils, model_config_utils, prune_config_utils
 
 FILE_NAME_MODEL: Text = "model.pth"
 FILE_NAME_WEIGHT_ONLY: Text = "weight_only.pth"
-FILE_NAME_MODEL_CONFIG: Text = "model_config.json"
+FILE_NAME_MODEL_CONFIG: Text = "config-model.json"
+FILE_NAME_PRUNE_CONFIG: Text = "config-prune.json"
 
 
 class SimilarityMetrics:
@@ -92,7 +93,7 @@ def prune_fc_layer_with_craig(
 
 
 def prune_network_with_craig(
-    prune_config: prune_config_utils.PruneConfig,
+    prune_config: prune_config_utils.PruneConfig, pruned_output_folder: Text
 ) -> None:
     """This currently assumes that all fully connected layers are directly in
     one sequence, and that there are no non-FC layers after the last FC layer
@@ -122,11 +123,6 @@ def prune_network_with_craig(
             similarity_metric=prune_config.prune_params["similarity_metric"],
         )
 
-    # Save newly pruned model+weights.
-    pruned_output_folder: Text = prune_config.pruned_model_out_folder
-    if not os.path.exists(pruned_output_folder):
-        os.makedirs(pruned_output_folder)
-
     out_model_path: Text = os.path.join(pruned_output_folder, FILE_NAME_MODEL)
     out_weights_path: Text = os.path.join(
         pruned_output_folder, FILE_NAME_WEIGHT_ONLY
@@ -135,14 +131,14 @@ def prune_network_with_craig(
     torch.save(model.state_dict(), out_weights_path)
     print(model)
 
-    # Save model config.
+    # Save new model config.
     # TODO: Support more model architectures.
     out_model_config_path: Text = os.path.join(
         pruned_output_folder, FILE_NAME_MODEL_CONFIG
     )
-    model_config: model_config_utils.ModelConfig = prune_config.model_config
+    model_architecture = model.ARCHITECTURE_NAME
     out_model_config: Dict
-    if model_config.model_architecture == "fc_2":
+    if model_architecture == "fc_2":
         out_model_config = {
             "model_architecture": "fc_2",
             "model_params": {
@@ -152,12 +148,12 @@ def prune_network_with_craig(
                 "output_dim": 10,
             },
         }
-    elif model_config.model_architecture == "fc_classifier":
+    elif model_architecture == "fc_classifier":
         out_model_config = {
             "model_architecture": "fc_classifier",
             "model_params": {
                 "input_shape": [28, 28],
-                "layers": [l.out_features for l in fc_layers],
+                "layers": [l.out_features for l in fc_layers[:-1]],
                 "output_dim": 10,
             },
         }
@@ -186,6 +182,15 @@ def get_args():
         help="Path to pruning config JSON file.",
     )
 
+    parser.add_argument(
+        "-o",
+        "--out_folder",
+        type=str,
+        required=False,
+        default=None,
+        help="Folder where output should be written. Overrides path from prune config.",
+    )
+
     return parser.parse_args()
 
 
@@ -197,7 +202,18 @@ def main() -> None:
         args.config
     )
 
-    prune_network_with_craig(config)
+    pruned_output_folder: Text = (
+        args.out_folder if args.out_folder else config.pruned_model_out_folder
+    )
+    if not os.path.exists(pruned_output_folder):
+        os.makedirs(pruned_output_folder)
+
+    # Save original prune config.
+    general_config_utils.write_config_to_file(
+        config, os.path.join(pruned_output_folder, FILE_NAME_PRUNE_CONFIG)
+    )
+
+    prune_network_with_craig(config, pruned_output_folder)
 
 
 if __name__ == "__main__":
