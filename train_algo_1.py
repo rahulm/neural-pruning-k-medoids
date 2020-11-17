@@ -165,7 +165,7 @@ def train_model_with_configs(
             )
 
             test_acc, test_loss = eval_model.evaluate_model(
-                model=model, dataloader=test_loader, torchdevice=torch_device
+                model=model, dataloader=test_loader, torch_device=torch_device
             )
             test_acc_epochs.add(test_acc)
             test_loss_epochs.add(test_loss)
