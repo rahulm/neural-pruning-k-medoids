@@ -18,9 +18,6 @@ FILE_NAME_PRUNE_CONFIG: Text = "config-prune.json"
 
 
 class SimilarityMetrics:
-    # TODO: Maybe make this a dict from name to method
-    SUPPORTED_SIMILARITY_METRICS: Set = set(["weights_covariance"])
-
     @staticmethod
     def weights_covariance(layer):
         # Calculate covariance. Each row corresponds to a node.
@@ -41,12 +38,6 @@ def prune_fc_layer_with_craig(
         prune_percent_per_layer
     )
 
-    assert (
-        similarity_metric in SimilarityMetrics.SUPPORTED_SIMILARITY_METRICS
-    ), "similarity_metric ({}) must be within: {}".format(
-        similarity_metric, SimilarityMetrics.SUPPORTED_SIMILARITY_METRICS
-    )
-
     original_num_nodes: int = curr_layer.out_features
     original_nodes = list(range(original_num_nodes))
 
@@ -55,8 +46,10 @@ def prune_fc_layer_with_craig(
         (1 - prune_percent_per_layer) * original_num_nodes
     )
 
-    # TODO: Maybe make this generic to support different metrics and args.
-    similarity_matrix = SimilarityMetrics.weights_covariance(layer=curr_layer)
+    # Maybe make this generic to support different metrics and args.
+    similarity_matrix = getattr(SimilarityMetrics, similarity_metric)(
+        curr_layer
+    )
 
     facility_location: craig.FacilityLocation = craig.FacilityLocation(
         D=similarity_matrix, V=original_nodes
