@@ -7,13 +7,13 @@ import torch
 import torch.nn.functional as F
 import torchvision
 
-from utils import model_config_utils, train_utils
+from utils import train_utils
 
 
 def evaluate_model(
     model: torch.nn.Module,
     dataloader: torch.utils.data.DataLoader,
-    torchdevice: torch.device,
+    torch_device: torch.device,
 ) -> Tuple[float, float]:
     loss_sum: float = 0.0
     num_correct: int = 0
@@ -21,7 +21,7 @@ def evaluate_model(
     model.eval()
     with torch.no_grad():
         for data, target in dataloader:
-            data, target = data.to(torchdevice), target.to(torchdevice)
+            data, target = data.to(torch_device), target.to(torch_device)
             output = model(data)
             loss_sum += F.cross_entropy(output, target).item()
             pred = output.argmax(dim=1, keepdim=True)
@@ -33,27 +33,15 @@ def evaluate_model(
     return accuracy, loss_ave
 
 
-def evaluate_model_from_config(
-    model_config: model_config_utils.ModelConfig,
+def evaluate_model_from_checkpoint_file(
+    model_path_checkpoint: Text,
     dataset_name: Text,
     batch_size: int,
     use_gpu: bool,
 ) -> Tuple[float, float]:
-    torchdevice: torch.device = torch.device("cuda" if use_gpu else "cpu")
+    torch_device: torch.device = torch.device("cuda" if use_gpu else "cpu")
 
-    # TODO: Support more models.
-    model: torch.nn.Module
-    if model_config.model_architecture == "fc_2":
-        from models.fc_2 import Model
-
-        # Maybe make the map_location dynamic.
-        model = torch.load(model_config.model_path, map_location=torchdevice)
-    else:
-        print(
-            "Architecture unsupported: {}".format(
-                model_config.model_architecture
-            )
-        )
+    model = torch.load(model_path_checkpoint, map_location=torch_device)
 
     dataloader = torch.utils.data.DataLoader(
         train_utils.DATASET_FUNCTIONS[dataset_name](
@@ -66,7 +54,7 @@ def evaluate_model_from_config(
         shuffle=True,
     )
 
-    return evaluate_model(model, dataloader, torchdevice)
+    return evaluate_model(model, dataloader, torch_device)
 
 
 ### CLI
@@ -78,11 +66,11 @@ def get_args():
     parser = argparse.ArgumentParser(description="Evaluate model on dataset.")
 
     parser.add_argument(
-        "-c",
-        "--config",
+        "-m",
+        "--model_checkpoint",
         type=str,
         required=True,
-        help="Path to model config JSON.",
+        help="Path to model checkpoint file.",
     )
 
     parser.add_argument(
@@ -115,11 +103,8 @@ def get_args():
 
 def main() -> None:
     args = get_args()
-    model_config: model_config_utils.ModelConfig = model_config_utils.get_config_from_file(
-        args.config
-    )
-    test_acc, test_loss = evaluate_model_from_config(
-        model_config=model_config,
+    test_acc, test_loss = evaluate_model_from_checkpoint_file(
+        model_path_checkpoint=args.model_checkpoint,
         dataset_name=args.dataset,
         batch_size=args.batch_size,
         use_gpu=not args.no_cuda,
