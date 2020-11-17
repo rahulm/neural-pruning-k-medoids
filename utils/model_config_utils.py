@@ -14,8 +14,8 @@ class ModelConfig:
     config_id: Text
     model_architecture: Text
     model_params: Dict
-    model_folder: Text
-    model_path: Text
+    # model_folder: Text
+    # model_path: Text
 
     def __init__(self, config_dict: Dict) -> None:
         self._raw_dict: Dict = config_dict

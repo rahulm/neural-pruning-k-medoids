@@ -17,6 +17,7 @@ class PruneConfig:
     model_config: model_config_utils.ModelConfig
     prune_type: Text
     prune_params: Dict
+    original_model_path: Text
     pruned_model_out_folder: Text
 
     def __init__(self, config_dict: Dict) -> None:
