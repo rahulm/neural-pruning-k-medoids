@@ -1,5 +1,6 @@
 """Sets up logging for the project"""
 import logging
+import os
 from typing import Optional, Text
 
 
@@ -15,6 +16,10 @@ def setup_logging(log_file_loc: Optional[Text] = None) -> None:
 
     handler_log_file: logging.Handler
     if log_file_loc:
+        log_dir: Text = os.path.dirname(log_file_loc)
+        if not os.path.exists(log_dir):
+            os.makedirs(log_dir)
+
         handler_log_file = logging.FileHandler(filename=log_file_loc, mode="a")
         handler_log_file.setLevel(level="NOTSET")
     else:

@@ -24,6 +24,8 @@ experiment_id: Text = "test-1"
 
 data_folder_path: Text = os.path.join("data", "pytorch")
 experiment_folder_path: Text = os.path.join("experiments", experiment_id)
+if not os.path.exists(experiment_folder_path):
+    os.makedirs(experiment_folder_path)
 
 logging_utils.setup_logging(
     os.path.join(
