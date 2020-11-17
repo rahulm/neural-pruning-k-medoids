@@ -20,7 +20,7 @@ from models.fc_2 import Model
 from utils import logging_utils, train_utils
 
 # TODO: Change this per experiment.
-experiment_id: Text = "test-1"
+experiment_id: Text = "lenet_300_100-2020_11_16-1"
 
 data_folder_path: Text = os.path.join("data", "pytorch")
 experiment_folder_path: Text = os.path.join("experiments", experiment_id)
@@ -105,6 +105,7 @@ test_loader = torch.utils.data.DataLoader(
 
 def train(epoch: int) -> None:
     model.train()
+    dataset_len: int = len(train_loader.dataset)
     total_data_count: int = 0
     curr_loss: float = 0.0
     num_correct: int = 0
@@ -124,8 +125,7 @@ def train(epoch: int) -> None:
 
         pred = output.argmax(dim=1, keepdim=True)
         num_correct_per_batch: int = pred.eq(target.view_as(pred)).sum().item()
-        num_items_in_batch: int = len(train_loader.dataset)
-        train_acc_batches.add(num_correct_per_batch / num_items_in_batch)
+        train_acc_batches.add(num_correct_per_batch / len(data))
 
         num_correct += num_correct_per_batch
 
@@ -134,8 +134,8 @@ def train(epoch: int) -> None:
                 "Train || Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}".format(
                     epoch,
                     total_data_count,
-                    num_items_in_batch,
-                    100.0 * total_data_count / num_items_in_batch,
+                    dataset_len,
+                    100.0 * total_data_count / dataset_len,
                     curr_loss,
                 )
             )
