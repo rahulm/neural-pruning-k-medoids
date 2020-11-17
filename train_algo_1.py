@@ -282,7 +282,7 @@ def main() -> None:
     args = get_args()
 
     experiment_folder_path: Text = os.path.join(
-        "experiments", args.experiment_id
+        "experiments", args.experiment_id, "training"
     )
     if not os.path.exists(experiment_folder_path):
         os.makedirs(experiment_folder_path)
