@@ -54,6 +54,9 @@ torch.manual_seed(random_seed)
 
 train_loss_batches: train_utils.StatCounter = train_utils.StatCounter()
 train_loss_epochs: train_utils.StatCounter = train_utils.StatCounter()
+train_acc_batches: train_utils.StatCounter = train_utils.StatCounter()
+train_acc_epochs: train_utils.StatCounter = train_utils.StatCounter()
+
 test_loss_epochs: train_utils.StatCounter = train_utils.StatCounter()
 test_acc_epochs: train_utils.StatCounter = train_utils.StatCounter()
 
@@ -102,8 +105,10 @@ test_loader = torch.utils.data.DataLoader(
 
 def train(epoch: int) -> None:
     model.train()
-    curr_loss: float = 0.0
     total_data_count: int = 0
+    curr_loss: float = 0.0
+    num_correct: int = 0
+
     for batch_ind, (data, target) in enumerate(train_loader):
         total_data_count += len(data)
 
@@ -117,18 +122,26 @@ def train(epoch: int) -> None:
         curr_loss = loss.item()
         train_loss_batches.add(curr_loss)
 
+        pred = output.argmax(dim=1, keepdim=True)
+        num_correct_per_batch: int = pred.eq(target.view_as(pred)).sum().item()
+        num_items_in_batch: int = len(train_loader.dataset)
+        train_acc_batches.add(num_correct_per_batch / num_items_in_batch)
+
+        num_correct += num_correct_per_batch
+
         if batch_ind % log_interval == 0:
             logger.info(
                 "Train || Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}".format(
                     epoch,
                     total_data_count,
-                    len(train_loader.dataset),
-                    100.0 * total_data_count / len(train_loader.dataset),
+                    num_items_in_batch,
+                    100.0 * total_data_count / num_items_in_batch,
                     curr_loss,
                 )
             )
 
     train_loss_epochs.add(curr_loss)
+    train_acc_epochs.add(num_correct / total_data_count)
 
 
 checkpoints_folder_path: Text = os.path.join(
@@ -164,30 +177,46 @@ try:
         )
 finally:
     # Save losses.
-    loss_folder_path: Text = os.path.join(experiment_folder_path, "loss")
+    stats_folder_path: Text = os.path.join(experiment_folder_path, "stats")
     train_loss_batches.save(
-        folder_path=loss_folder_path,
+        folder_path=stats_folder_path,
         file_prefix="train_loss_batches",
         xlabel="batch",
         ylabel="loss",
         title_prefix="train_loss_batches",
     )
     train_loss_epochs.save(
-        folder_path=loss_folder_path,
+        folder_path=stats_folder_path,
         file_prefix="train_loss_epochs",
         xlabel="epoch",
         ylabel="loss",
         title_prefix="train_loss_epochs",
     )
+
+    train_acc_batches.save(
+        folder_path=stats_folder_path,
+        file_prefix="train_accuracy_batches",
+        xlabel="batch",
+        ylabel="accuracy",
+        title_prefix="train_accuracy_batches",
+    )
+    train_acc_epochs.save(
+        folder_path=stats_folder_path,
+        file_prefix="train_accuracy_epochs",
+        xlabel="epoch",
+        ylabel="accuracy",
+        title_prefix="train_accuracy_epochs",
+    )
+
     test_loss_epochs.save(
-        folder_path=loss_folder_path,
+        folder_path=stats_folder_path,
         file_prefix="test_loss_epochs",
         xlabel="epoch",
         ylabel="loss",
         title_prefix="test_loss_epochs",
     )
     test_acc_epochs.save(
-        folder_path=loss_folder_path,
+        folder_path=stats_folder_path,
         file_prefix="test_accuracy_epochs",
         xlabel="epoch",
         ylabel="accuracy",
