@@ -9,10 +9,10 @@ import craig_pruner
 import eval_model
 from utils import prune_config_utils
 
-prune_config_root_path: Text = "experiments/lenet_300_100-1/config-prune-euclidean_distance_0.3.json"
-prune_config_root: prune_config_utils.PruneConfig = prune_config_utils.get_config_from_file(
-    prune_config_root_path
-)
+# prune_config_root_path: Text = "experiments/lenet_300_100-1/config-prune-euclidean_distance_0.3.json"
+# prune_config_root: prune_config_utils.PruneConfig = prune_config_utils.get_config_from_file(
+#     prune_config_root_path
+# )
 
 
 """
@@ -25,6 +25,10 @@ Print these out in a csv (or formatted that way).
 """
 
 PRINT_FORMAT: Text = "{} || Size (bytes): {} | Train acc: {} | Test acc: {}"
+
+prune_config_root: prune_config_utils.PruneConfig = prune_config_utils.PruneConfig(
+    {"prune_type": "craig", "prune_params": {}}
+)
 
 original_model_path: Text = "experiments/lenet_300_100-1/training/checkpoints/checkpoint-epoch_40-model.pth"
 prune_out_folder_root: Text = "experiments/lenet_300_100-1/pruning"
@@ -53,7 +57,13 @@ print(
 
 
 prune_config_root.original_model_path = original_model_path
-list_similarity_metric: List[Text] = ["euclidean_distance", "weights_covariance"]
+list_similarity_metric: List[Text] = [
+    "euclidean_distance",
+    "rbf_kernel",
+    "cosine_similarity",
+    "l1_norm",
+    "weights_covariance",
+]
 list_percent_per_layer: List[float] = [
     0.1,
     0.2,
