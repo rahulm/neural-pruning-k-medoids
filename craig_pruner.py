@@ -104,6 +104,14 @@ def prune_network_with_craig(
     one sequence, and that there are no non-FC layers after the last FC layer
     of that sequence."""
 
+    if not os.path.exists(pruned_output_folder):
+        os.makedirs(pruned_output_folder)
+
+    # Save original prune config.
+    general_config_utils.write_config_to_file(
+        prune_config, os.path.join(pruned_output_folder, FILE_NAME_PRUNE_CONFIG)
+    )
+
     model_path: Text = prune_config.original_model_path
     load_location = torch.device("cpu")  # Can make this None, as default
     model = torch.load(model_path, map_location=load_location)
@@ -209,13 +217,6 @@ def main() -> None:
 
     pruned_output_folder: Text = (
         args.out_folder if args.out_folder else config.pruned_model_out_folder
-    )
-    if not os.path.exists(pruned_output_folder):
-        os.makedirs(pruned_output_folder)
-
-    # Save original prune config.
-    general_config_utils.write_config_to_file(
-        config, os.path.join(pruned_output_folder, FILE_NAME_PRUNE_CONFIG)
     )
 
     prune_network_with_craig(config, pruned_output_folder)
