@@ -37,12 +37,42 @@ class SimilarityMetrics:
         )
         return np.max(dists) - dists
 
+    @staticmethod
+    def cosine_similarity(layer, **kwargs):
+        """
+        Calculates the cosine similarity of the nodes in a layer.
+        """
+        layer_weights = layer.weight.cpu().detach().numpy()
+        dists = sklearn.metrics.pairwise_distances(
+            layer_weights, metric="cosine", n_jobs=-1
+        )
+        return 1 - dists
+
+    @staticmethod
+    def l1_norm(layer, **kwargs):
+        """
+        Calculates the L1 norm distance of the nodes in a layer.
+        """
+        layer_weights = layer.weight.cpu().detach().numpy()
+        dists = sklearn.metrics.pairwise_distances(
+            layer_weights, metric="l1", n_jobs=-1
+        )
+        return np.max(dists) - dists
+
+    @staticmethod
+    def rbf_kernel(layer, **kwargs):
+        """
+        Calculates the similarity based on the Radial Basis Function (RBF).
+        """
+        layer_weights = layer.weight.cpu().detach().numpy()
+        return sklearn.metrics.pairwise.rbf_kernel(layer_weights, layer_weights)
+
 
 def prune_fc_layer_with_craig(
     curr_layer,
     next_layer,
     prune_percent_per_layer: float,
-    similarity_metric="weights_covariance",
+    similarity_metric: Text,
 ) -> None:
     assert (0 <= prune_percent_per_layer) and (
         prune_percent_per_layer <= 1
