@@ -18,7 +18,10 @@ class ModelConfig:
     # model_path: Text
 
     def __init__(self, config_dict: Dict) -> None:
-        self._raw_dict: Dict = config_dict
+        super().__setattr__("_raw_dict", config_dict)
+
+    def __setattr__(self, name, value):
+        self._raw_dict[name] = value
 
     def __getattr__(self, name):
         if name in self._raw_dict:
