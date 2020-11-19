@@ -27,7 +27,7 @@ class StatCounter:
         xlabel: Text = "iteration",
         ylabel: Text = "loss",
         title_prefix: Text = "",
-        index_offset: int = 1,
+        index_offset: int = 0,
         index_multiplier: int = 1,
     ) -> None:
         if not os.path.exists(folder_path):

@@ -157,6 +157,21 @@ def train_model_with_configs(
         os.makedirs(checkpoints_folder_path)
 
     try:
+        # First, get initial train and test scores.
+        initial_train_acc, initial_train_loss = eval_model.evaluate_model(
+            model=model, dataloader=train_loader, torch_device=torch_device
+        )
+        train_acc_batches.add(initial_train_acc)
+        train_acc_epochs.add(initial_train_acc)
+        train_loss_batches.add(initial_train_loss)
+        train_loss_epochs.add(initial_train_loss)
+        initial_test_acc, initial_test_loss = eval_model.evaluate_model(
+            model=model, dataloader=test_loader, torch_device=torch_device
+        )
+        test_acc_epochs.add(initial_test_acc)
+        test_loss_epochs.add(initial_test_loss)
+
+        # Train.
         for epoch in range(1, train_config.num_epochs + 1):
             train(
                 logger,
