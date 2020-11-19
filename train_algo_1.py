@@ -21,6 +21,25 @@ from utils import (
 )
 
 
+def save_model_checkpoint(
+    model: torch.nn.Module, checkpoints_folder_path: Text, epoch: int
+) -> None:
+    torch.save(
+        model,
+        os.path.join(
+            checkpoints_folder_path,
+            "checkpoint-epoch_{}-model.pth".format(epoch),
+        ),
+    )
+    torch.save(
+        model.state_dict(),
+        os.path.join(
+            checkpoints_folder_path,
+            "checkpoint-epoch_{}-weight_only.pth".format(epoch),
+        ),
+    )
+
+
 def train(
     logger,
     log_interval: int,
@@ -171,6 +190,13 @@ def train_model_with_configs(
         test_acc_epochs.add(initial_test_acc)
         test_loss_epochs.add(initial_test_loss)
 
+        # Save initial model checkpoint.
+        save_model_checkpoint(
+            model=model,
+            checkpoints_folder_path=checkpoints_folder_path,
+            epoch=0,
+        )
+
         # Train.
         for epoch in range(1, train_config.num_epochs + 1):
             train(
@@ -196,19 +222,10 @@ def train_model_with_configs(
             scheduler.step()
 
             # Save model checkpoint.
-            torch.save(
-                model,
-                os.path.join(
-                    checkpoints_folder_path,
-                    "checkpoint-epoch_{}-model.pth".format(epoch),
-                ),
-            )
-            torch.save(
-                model.state_dict(),
-                os.path.join(
-                    checkpoints_folder_path,
-                    "checkpoint-epoch_{}-weight_only.pth".format(epoch),
-                ),
+            save_model_checkpoint(
+                model=model,
+                checkpoints_folder_path=checkpoints_folder_path,
+                epoch=epoch,
             )
     finally:
         # Save losses.
