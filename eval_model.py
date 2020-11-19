@@ -18,6 +18,7 @@ def evaluate_model(
     loss_sum: float = 0.0
     num_correct: int = 0
 
+    model.to(torch_device)
     model.eval()
     with torch.no_grad():
         for data, target in dataloader:
