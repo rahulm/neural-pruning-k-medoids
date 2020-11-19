@@ -12,9 +12,9 @@ from torch import nn
 import craig
 from utils import general_config_utils, model_config_utils, prune_config_utils
 
-FILE_NAME_MODEL: Text = "model.pth"
-FILE_NAME_WEIGHT_ONLY: Text = "weight_only.pth"
-FILE_NAME_MODEL_CONFIG: Text = "config-model.json"
+FILE_NAME_MODEL: Text = "pruned_model.pth"
+FILE_NAME_WEIGHT_ONLY: Text = "pruned_weight_only.pth"
+FILE_NAME_MODEL_CONFIG: Text = "config-model-pruned_model.json"
 FILE_NAME_PRUNE_CONFIG: Text = "config-prune.json"
 
 
