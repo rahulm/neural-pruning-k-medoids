@@ -6,7 +6,7 @@ It may be good to rename this to something more informative.
 import importlib
 import os
 from datetime import datetime
-from typing import Text
+from typing import Text, Union
 
 import torch
 import torch.nn.functional as F
@@ -76,12 +76,12 @@ def train(
 
 
 def train_model_with_configs(
-    logger,
-    model_config: model_config_utils.ModelConfig,
+    model_config_or_checkpoint: Union[model_config_utils.ModelConfig, Text],
     train_config: train_config_utils.TrainConfig,
     experiment_folder_path: Text,
     use_gpu: bool = True,
 ) -> None:
+    logger = logging_utils.get_logger(__name__)
     log_interval: int = 100
 
     torch_device = torch.device("cuda" if use_gpu else "cpu")
@@ -120,12 +120,21 @@ def train_model_with_configs(
     )
 
     # Load model.
-    model_py_module = importlib.import_module(
-        "models.{}".format(model_config.model_architecture)
-    )
-    Model = model_py_module.Model  # type: ignore
-    # model: Model = Model(
-    model: torch.nn.Module = Model(**model_config.model_params)
+    model: torch.nn.Module
+    if isinstance(model_config_or_checkpoint, model_config_utils.ModelConfig):
+        model_config: model_config_utils.ModelConfig = model_config_or_checkpoint
+        model_py_module = importlib.import_module(
+            "models.{}".format(model_config.model_architecture)
+        )
+        Model = model_py_module.Model  # type: ignore
+        model = Model(**model_config.model_params)
+    elif isinstance(model_config_or_checkpoint, Text):
+        model_checkpoint_path: Text = model_config_or_checkpoint
+        model = torch.load(model_checkpoint_path, map_location=torch_device)
+    else:
+        err_msg: Text = "Model config or path to model checkpoint must be provided."
+        logger.error(err_msg)
+        raise TypeError(err_msg)
     model.to(device=torch_device)
 
     # Just using basic Stochastic Gradient Descent.
@@ -293,9 +302,6 @@ def main() -> None:
             "log-{}.txt".format(datetime.now().strftime("%Y_%m_%d-%H_%M_%S")),
         )
     )
-    logger = logging_utils.get_logger(name=__name__)
-
-    logger.info(args)
 
     model_config: model_config_utils.ModelConfig = model_config_utils.get_config_from_file(
         args.model_config
@@ -306,10 +312,9 @@ def main() -> None:
     )
 
     train_model_with_configs(
-        logger,
-        model_config,
-        train_config,
-        experiment_folder_path,
+        model_config_or_checkpoint=model_config,
+        train_config=train_config,
+        experiment_folder_path=experiment_folder_path,
         use_gpu=not args.no_cuda,
     )
 
