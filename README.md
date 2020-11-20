@@ -3,9 +3,9 @@ Capstone project for UCLA Masters program in Computer Science, 2020.
 
 
 ## Brief overview
-- craig_pruner.py is used to prune a network (currently only LeNet-300-100) based on CRAIG. We can define more similarity metrics in the SimilarityMetrics class as we experiment. We pass a JSON file as a PruneConfig to denote what we want to do.
-- eval_model.py is to evaluate a given model (currently only LeNet-300-100) on a dataset (currently only MNIST). Returns both accuracy and average loss.
-- train_algo_1.py is used to train a model, based on a train config JSON file.
+- [pruner.py](pruner.py) is used to prune a network (currently only LeNet-300-100) based on CRAIG or Mussay. For CRAIG, we can define more similarity metrics in the SimilarityMetrics class as we experiment. We pass a JSON file as a PruneConfig to denote what we want to do.
+- [eval_model.py](eval_model.py) is to evaluate a given model (currently only LeNet-300-100) on a dataset (currently only MNIST). Returns both accuracy and average loss.
+- [train_algo_1.py](train_algo_1.py) is used to train a model, based on a train config JSON file.
 
 ## Examples
 Note that some fields are ignored in certain scripts.
@@ -28,6 +28,8 @@ Note that some fields are ignored in certain scripts.
 ```
 
 ### Prune config
+
+#### CRAIG
 ```json
 {
     "config_id": "config-prune-lenet_300_100-v1",
@@ -36,7 +38,20 @@ Note that some fields are ignored in certain scripts.
         "prune_percent_per_layer": 0.3,
         "similarity_metric": "weights_covariance"
     },
-    "original_model_path": "experiments/lenet_300_100-1/training/checkpoints/checkpoint-epoch_40-model.pth"
+    "original_model_path": "experiments/lenet_300_100-finetuned/training/checkpoints/checkpoint-epoch_40-model.pth"
+}
+```
+
+#### Mussay
+```json
+{
+    "prune_type": "mussay",
+    "prune_params": {
+        "prune_percent_per_layer": 0.3,
+        "upper_bound": 1,
+        "compression_type": "Coreset"
+    },
+    "original_model_path": "experiments/lenet_300_100-finetuned/training/checkpoints/checkpoint-epoch_40-model.pth"
 }
 ```
 

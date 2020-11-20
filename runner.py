@@ -6,8 +6,8 @@ import shutil
 from datetime import datetime
 from typing import List, Text, Tuple
 
-import craig_pruner
 import eval_model
+import pruner
 import train_algo_1
 from utils import logging_utils, prune_config_utils, train_config_utils
 
@@ -65,11 +65,11 @@ def run_single_experiment(
 
     # Prune.
     logger.info("pruning...")
-    craig_pruner.prune_network(
+    pruner.prune_network(
         prune_config=prune_config, pruned_output_folder=prune_exp_folder_path
     )
     pruned_model_path: Text = os.path.join(
-        prune_exp_folder_path, craig_pruner.FILE_NAME_MODEL
+        prune_exp_folder_path, pruner.FILE_NAME_MODEL
     )
 
     # # Evaluate.
@@ -311,7 +311,7 @@ def run_experiments(
 ) -> None:
     """
     For each experiment:
-    - Prune network, save pruned model (craig_pruner).
+    - Prune network, save pruned model (pruner).
     - Get train and test accuracy for pruned model on MNIST (eval_model).
     - Fine tune model.
     - Get train and test accuracy for pruned+finetuned model on MNIST (eval_model).

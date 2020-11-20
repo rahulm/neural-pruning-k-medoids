@@ -1,4 +1,4 @@
-"""Performs CRAIG neural pruning"""
+"""Performs neural pruning with CRAIG or Mussay algorithm."""
 
 import json
 import os
@@ -296,7 +296,7 @@ def get_args():
     import argparse
 
     parser = argparse.ArgumentParser(
-        description="Prune the given neural network with CRAIG."
+        description="Prune the given neural network with CRAIG or Mussay."
     )
 
     parser.add_argument(
