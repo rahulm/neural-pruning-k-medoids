@@ -10,6 +10,7 @@ import torch
 from torch import nn
 
 import craig
+from mussay_neural_pruning import coreset
 from utils import general_config_utils, model_config_utils, prune_config_utils
 
 FILE_NAME_MODEL: Text = "pruned_model.pth"
@@ -69,8 +70,8 @@ class SimilarityMetrics:
 
 
 def prune_fc_layer_with_craig(
-    curr_layer,
-    next_layer,
+    curr_layer: nn.Linear,
+    next_layer: nn.Linear,
     prune_percent_per_layer: float,
     similarity_metric: Text,
 ) -> None:
@@ -120,38 +121,19 @@ def prune_fc_layer_with_craig(
     next_layer.weight = nn.Parameter(next_layer.weight[:, subset_nodes])
     next_layer.in_features = num_nodes
 
-    # print(">>>>>")
-    # print(curr_layer.weight.shape)
-    # print(curr_layer.bias.shape)
-    # print(next_layer.weight.shape)
-    # print(next_layer.bias.shape)
-
 
 def prune_network_with_craig(
+    model: nn.Module,  # TODO: Make a base class for easier sequential_module support.
     prune_config: prune_config_utils.PruneConfig,
-    pruned_output_folder: Text,
     **kwargs
 ) -> None:
     """This currently assumes that all fully connected layers are directly in
     one sequence, and that there are no non-FC layers after the last FC layer
     of that sequence."""
 
-    if not os.path.exists(pruned_output_folder):
-        os.makedirs(pruned_output_folder)
-
-    # Save original prune config.
-    general_config_utils.write_config_to_file(
-        prune_config, os.path.join(pruned_output_folder, FILE_NAME_PRUNE_CONFIG)
-    )
-
-    model_path: Text = prune_config.original_model_path
-    load_location = torch.device("cpu")  # Can make this None, as default
-    model = torch.load(model_path, map_location=load_location)
-
-    # Ignore non-FC layers, following assumption in docstring.
-    fc_layers: List = [
+    fc_layers: List[nn.Linear] = [
         layer
-        for layer in model.sequential_module
+        for layer in model.sequential_module  # type: ignore
         if isinstance(layer, nn.Linear)
     ]
 
@@ -168,6 +150,99 @@ def prune_network_with_craig(
             similarity_metric=prune_config.prune_params["similarity_metric"],
         )
 
+
+def prune_network_with_mussay(
+    model: nn.Module,  # TODO: Make a base class for easier sequential_module support.
+    prune_config: prune_config_utils.PruneConfig,
+    torch_device: torch.device,
+    **kwargs
+) -> None:
+    """This currently assumes that all fully connected layers are directly in
+    one sequence, and that there are no non-FC layers after the last FC layer
+    of that sequence."""
+
+    # Prune params.
+    prune_params: Dict = prune_config.prune_params
+
+    # Ignore non-FC layers, following assumption in docstring.
+    fc_layers: List[nn.Linear] = [
+        layer
+        for layer in model.sequential_module  # type: ignore
+        if isinstance(layer, nn.Linear)
+    ]
+
+    # Prune the out_features for each layer, except the output (last) layer.
+    for layer_i in range(len(fc_layers) - 1):
+        curr_layer = fc_layers[layer_i]
+        next_layer = fc_layers[layer_i + 1]
+
+        # Get compressed layer weights and biases.
+        layer_1, layer_2, compressed_node_set = coreset.compress_fc_layer(
+            layer1=(curr_layer.weight, curr_layer.bias),
+            layer2=(next_layer.weight, next_layer.bias),
+            device=torch_device,
+            activation=torch.functional.F.relu,  # TODO: Make this changeable via the config.
+            compressed_size=(
+                (1 - prune_params["prune_percent_per_layer"])
+                * curr_layer.out_features
+            ),
+            upper_bound=prune_params["upper_bound"],
+            compression_type=prune_params["compression_type"],
+        )
+
+        num_compressed_nodes: int = len(compressed_node_set)
+        curr_layer.weight = nn.Parameter(layer_1[0])
+        curr_layer.bias = nn.Parameter(layer_1[1])
+        curr_layer.out_features = num_compressed_nodes
+
+        next_layer.weight = nn.Parameter(layer_2[0])
+        next_layer.bias = nn.Parameter(layer_2[1])
+        next_layer.in_features = num_compressed_nodes
+
+
+def prune_network(
+    prune_config: prune_config_utils.PruneConfig,
+    pruned_output_folder: Text,
+    **kwargs
+) -> None:
+    """This currently assumes that all fully connected layers are directly in
+    one sequence, and that there are no non-FC layers after the last FC layer
+    of that sequence."""
+
+    if not os.path.exists(pruned_output_folder):
+        os.makedirs(pruned_output_folder)
+
+    # Save original prune config.
+    general_config_utils.write_config_to_file(
+        prune_config, os.path.join(pruned_output_folder, FILE_NAME_PRUNE_CONFIG)
+    )
+
+    # Load model.
+    model_path: Text = prune_config.original_model_path
+    load_location = torch.device("cpu")  # Can make this None, as default
+    model = torch.load(model_path, map_location=load_location)
+
+    with torch.no_grad():
+        # Perform pruning.
+        if prune_config.prune_type == "craig":
+            model.to(torch.device("cpu"))
+            prune_network_with_craig(
+                model=model, prune_config=prune_config, **kwargs
+            )
+        elif prune_config.prune_type == "mussay":
+            torch_device: torch.device = torch.device("cpu")
+            prune_network_with_mussay(
+                model=model,
+                prune_config=prune_config,
+                torch_device=torch_device,
+                **kwargs
+            )
+        else:
+            raise ValueError(
+                "prune_type not supported: {}".format(prune_config.prune_type)
+            )
+
+    # Save pruned model.
     out_model_path: Text = os.path.join(pruned_output_folder, FILE_NAME_MODEL)
     out_weights_path: Text = os.path.join(
         pruned_output_folder, FILE_NAME_WEIGHT_ONLY
@@ -178,6 +253,11 @@ def prune_network_with_craig(
 
     # Save new model config.
     # TODO: Support more model architectures.
+    fc_layers: List = [
+        layer
+        for layer in model.sequential_module
+        if isinstance(layer, nn.Linear)
+    ]
     out_model_config_path: Text = os.path.join(
         pruned_output_folder, FILE_NAME_MODEL_CONFIG
     )
@@ -207,23 +287,6 @@ def prune_network_with_craig(
         return
     with open(out_model_config_path, "w") as out_model_config_file:
         json.dump(out_model_config, out_model_config_file)
-
-
-def prune_network(
-    prune_config: prune_config_utils.PruneConfig,
-    pruned_output_folder: Text,
-    **kwargs
-) -> None:
-    if prune_config.prune_type == "craig":
-        prune_network_with_craig(
-            prune_config=prune_config,
-            pruned_output_folder=pruned_output_folder,
-            **kwargs
-        )
-    elif prune_config.prune_type == "mussay":
-        print("To be implemented")
-    else:
-        print("Prune type not supported: {}".format(prune_config.prune_type))
 
 
 ### CLI
