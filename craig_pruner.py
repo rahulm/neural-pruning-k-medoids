@@ -128,7 +128,9 @@ def prune_fc_layer_with_craig(
 
 
 def prune_network_with_craig(
-    prune_config: prune_config_utils.PruneConfig, pruned_output_folder: Text
+    prune_config: prune_config_utils.PruneConfig,
+    pruned_output_folder: Text,
+    **kwargs
 ) -> None:
     """This currently assumes that all fully connected layers are directly in
     one sequence, and that there are no non-FC layers after the last FC layer
@@ -207,6 +209,23 @@ def prune_network_with_craig(
         json.dump(out_model_config, out_model_config_file)
 
 
+def prune_network(
+    prune_config: prune_config_utils.PruneConfig,
+    pruned_output_folder: Text,
+    **kwargs
+) -> None:
+    if prune_config.prune_type == "craig":
+        prune_network_with_craig(
+            prune_config=prune_config,
+            pruned_output_folder=pruned_output_folder,
+            **kwargs
+        )
+    elif prune_config.prune_type == "mussay":
+        print("To be implemented")
+    else:
+        print("Prune type not supported: {}".format(prune_config.prune_type))
+
+
 ### CLI
 
 
@@ -249,7 +268,7 @@ def main() -> None:
         args.out_folder if args.out_folder else config.pruned_model_out_folder
     )
 
-    prune_network_with_craig(config, pruned_output_folder)
+    prune_network(config, pruned_output_folder)
 
 
 if __name__ == "__main__":
