@@ -31,13 +31,13 @@ def save_model_checkpoint(
             "checkpoint-epoch_{}-model.pth".format(epoch),
         ),
     )
-    torch.save(
-        model.state_dict(),
-        os.path.join(
-            checkpoints_folder_path,
-            "checkpoint-epoch_{}-weight_only.pth".format(epoch),
-        ),
-    )
+    # torch.save(
+    #     model.state_dict(),
+    #     os.path.join(
+    #         checkpoints_folder_path,
+    #         "checkpoint-epoch_{}-weight_only.pth".format(epoch),
+    #     ),
+    # )
 
 
 def train(
@@ -98,6 +98,7 @@ def train_model_with_configs(
     model_config_or_checkpoint: Union[model_config_utils.ModelConfig, Text],
     train_config: train_config_utils.TrainConfig,
     experiment_folder_path: Text,
+    save_interval: int,
     use_gpu: bool = True,
 ) -> None:
     logger = logging_utils.get_logger(__name__)
@@ -222,11 +223,12 @@ def train_model_with_configs(
             scheduler.step()
 
             # Save model checkpoint.
-            save_model_checkpoint(
-                model=model,
-                checkpoints_folder_path=checkpoints_folder_path,
-                epoch=epoch,
-            )
+            if (epoch == 1) or ((epoch % save_interval) == 0):
+                save_model_checkpoint(
+                    model=model,
+                    checkpoints_folder_path=checkpoints_folder_path,
+                    epoch=epoch,
+                )
     finally:
         # Save losses.
         stats_folder_path: Text = os.path.join(experiment_folder_path, "stats")
@@ -310,6 +312,15 @@ def get_args():
     )
 
     parser.add_argument(
+        "-i",
+        "--save_interval",
+        type=int,
+        required=False,
+        default=1,
+        help="Save interval (by epoch) for checkpoints.",
+    )
+
+    parser.add_argument(
         "--no-cuda",
         action="store_true",
         default=False,
@@ -335,6 +346,9 @@ def main() -> None:
         )
     )
 
+    logger = logging_utils.get_logger(__name__)
+    logger.info(args)
+
     model_config: model_config_utils.ModelConfig = model_config_utils.get_config_from_file(
         args.model_config
     )
@@ -347,6 +361,7 @@ def main() -> None:
         model_config_or_checkpoint=model_config,
         train_config=train_config,
         experiment_folder_path=experiment_folder_path,
+        save_interval=args.save_interval,
         use_gpu=not args.no_cuda,
     )
 
