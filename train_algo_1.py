@@ -223,7 +223,11 @@ def train_model_with_configs(
             scheduler.step()
 
             # Save model checkpoint.
-            if (epoch == 1) or ((epoch % save_interval) == 0):
+            if (
+                (epoch == 1)
+                or (epoch == train_config.num_epochs)
+                or ((epoch % save_interval) == 0)
+            ):
                 save_model_checkpoint(
                     model=model,
                     checkpoints_folder_path=checkpoints_folder_path,
