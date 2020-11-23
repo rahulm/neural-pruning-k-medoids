@@ -74,12 +74,21 @@ class StatCounter:
 
 
 DATA_FOLDER_PATH: Text = os.path.join("data", "pytorch")
-DATASET_FUNCTIONS: Dict[Text, Callable] = {"mnist": torchvision.datasets.MNIST}
+DATASET_FUNCTIONS: Dict[Text, Callable] = {
+    "mnist": torchvision.datasets.MNIST,
+    "cifar10": torchvision.datasets.CIFAR10,
+}
 DATASET_TRANSFORMS: Dict = {
-    "mnist": torchvision.transforms.Compose(
+    "mnist": torchvision.transforms.Compose(  # From https://github.com/pytorch/examples/blob/master/mnist/main.py
         [
             torchvision.transforms.ToTensor(),
             torchvision.transforms.Normalize((0.1307,), (0.3081,)),
         ]
-    )
+    ),
+    "cifar10": torchvision.transforms.Compose(  # From https://pytorch.org/tutorials/beginner/blitz/cifar10_tutorial.html
+        [
+            torchvision.transforms.ToTensor(),
+            torchvision.transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
+        ]
+    ),
 }
