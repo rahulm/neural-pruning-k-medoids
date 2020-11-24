@@ -2,7 +2,7 @@
 
 import json
 import os
-from typing import Any, Dict, List, Set, Text
+from typing import Any, Callable, Dict, List, Set, Text, Tuple, Type, Union
 
 import numpy as np
 import sklearn.metrics
@@ -21,9 +21,15 @@ FILE_NAME_PRUNE_CONFIG: Text = "config-prune.json"
 
 class SimilarityMetrics:
     @staticmethod
+    def torch_layer_to_numpy_weights(torch_layer) -> np.ndarray:
+        """Helper function, flattens each node weight into an numpy array."""
+        layer_weights = torch_layer.weight.cpu().detach().numpy()
+        return np.reshape(layer_weights, (layer_weights.shape[0], -1))
+
+    @staticmethod
     def weights_covariance(layer, **kwargs):
         """Calculate covariance. Each row corresponds to a node."""
-        layer_weights = layer.weight.cpu().detach().numpy()
+        layer_weights = SimilarityMetrics.torch_layer_to_numpy_weights(layer)
         node_covariance = np.cov(layer_weights)
         return node_covariance
 
@@ -32,7 +38,7 @@ class SimilarityMetrics:
         """
         Calculates euclidean distance of nodes, treats weights as coordinates.
         """
-        layer_weights = layer.weight.cpu().detach().numpy()
+        layer_weights = SimilarityMetrics.torch_layer_to_numpy_weights(layer)
         dists = sklearn.metrics.pairwise_distances(
             layer_weights, metric="euclidean", n_jobs=-1
         )
@@ -43,7 +49,7 @@ class SimilarityMetrics:
         """
         Calculates the cosine similarity of the nodes in a layer.
         """
-        layer_weights = layer.weight.cpu().detach().numpy()
+        layer_weights = SimilarityMetrics.torch_layer_to_numpy_weights(layer)
         dists = sklearn.metrics.pairwise_distances(
             layer_weights, metric="cosine", n_jobs=-1
         )
@@ -54,7 +60,7 @@ class SimilarityMetrics:
         """
         Calculates the L1 norm distance of the nodes in a layer.
         """
-        layer_weights = layer.weight.cpu().detach().numpy()
+        layer_weights = SimilarityMetrics.torch_layer_to_numpy_weights(layer)
         dists = sklearn.metrics.pairwise_distances(
             layer_weights, metric="l1", n_jobs=-1
         )
@@ -65,16 +71,16 @@ class SimilarityMetrics:
         """
         Calculates the similarity based on the Radial Basis Function (RBF).
         """
-        layer_weights = layer.weight.cpu().detach().numpy()
+        layer_weights = SimilarityMetrics.torch_layer_to_numpy_weights(layer)
         return sklearn.metrics.pairwise.rbf_kernel(layer_weights, layer_weights)
 
 
 def prune_fc_layer_with_craig(
     curr_layer: nn.Linear,
-    next_layer: nn.Linear,
     prune_percent_per_layer: float,
     similarity_metric: Text,
-) -> None:
+    **kwargs
+) -> Tuple[List[int], List[float]]:
     assert (0 <= prune_percent_per_layer) and (
         prune_percent_per_layer <= 1
     ), "prune_percent_per_layer ({}) must be within [0,1]".format(
@@ -83,17 +89,13 @@ def prune_fc_layer_with_craig(
 
     original_num_nodes: int = curr_layer.out_features
     original_nodes = list(range(original_num_nodes))
-
-    # TODO: Instead of percent of nodes, maybe get all weights from CRAIG and take top percent?
     target_num_nodes: int = int(
         (1 - prune_percent_per_layer) * original_num_nodes
     )
 
-    # Maybe make this generic to support different metrics and args.
     similarity_matrix = getattr(SimilarityMetrics, similarity_metric)(
         curr_layer
     )
-
     facility_location: craig.FacilityLocation = craig.FacilityLocation(
         D=similarity_matrix, V=original_nodes
     )
@@ -103,13 +105,14 @@ def prune_fc_layer_with_craig(
     )
     subset_weights_tensor = torch.tensor(subset_weights)
 
-    # Remove nodes+weights+biases (in both curr_layer and next_layer), and adjust weights.
+    # Remove nodes+weights+biases, and adjust weights.
     num_nodes: int = len(subset_nodes)
 
     # Prune current layer.
     # Multiply weights (and biases?) by subset_weights.
     curr_layer.weight = nn.Parameter(
-        curr_layer.weight[subset_nodes] * subset_weights_tensor[:, None]
+        curr_layer.weight[subset_nodes]
+        * subset_weights_tensor.reshape((num_nodes, 1))
     )
     if curr_layer.bias is not None:
         curr_layer.bias = nn.Parameter(
@@ -117,42 +120,136 @@ def prune_fc_layer_with_craig(
         )
     curr_layer.out_features = num_nodes
 
-    # Prune removed nodes from the next layer.
-    next_layer.weight = nn.Parameter(next_layer.weight[:, subset_nodes])
-    next_layer.in_features = num_nodes
+    return subset_nodes, subset_weights
+
+
+def prune_conv2d_layer_with_craig(
+    curr_layer: nn.Conv2d,
+    prune_percent_per_layer: float,
+    similarity_metric: Text,
+    **kwargs
+) -> Tuple[List[int], List[float]]:
+    assert (0 <= prune_percent_per_layer) and (
+        prune_percent_per_layer <= 1
+    ), "prune_percent_per_layer ({}) must be within [0,1]".format(
+        prune_percent_per_layer
+    )
+
+    original_num_nodes: int = curr_layer.out_channels
+    original_nodes = list(range(original_num_nodes))
+    target_num_nodes: int = int(
+        (1 - prune_percent_per_layer) * original_num_nodes
+    )
+
+    similarity_matrix = getattr(SimilarityMetrics, similarity_metric)(
+        curr_layer
+    )
+    facility_location: craig.FacilityLocation = craig.FacilityLocation(
+        D=similarity_matrix, V=original_nodes
+    )
+
+    subset_nodes, subset_weights = craig.lazy_greedy_heap(
+        F=facility_location, V=original_nodes, B=target_num_nodes
+    )
+    subset_weights_tensor = torch.tensor(subset_weights)
+
+    # Remove nodes+weights+biases, and adjust weights.
+    num_nodes: int = len(subset_nodes)
+
+    # Prune current layer.
+    # Multiply weights (and biases?) by subset_weights.
+    curr_layer.weight = nn.Parameter(
+        curr_layer.weight[subset_nodes]
+        * subset_weights_tensor.reshape((num_nodes, 1, 1, 1))
+    )
+    if curr_layer.bias is not None:
+        curr_layer.bias = nn.Parameter(
+            curr_layer.bias[subset_nodes] * subset_weights_tensor
+        )
+    curr_layer.out_channels = num_nodes
+
+    return subset_nodes, subset_weights
+
+
+LAYER_TYPE_MAP: Dict[Type[nn.Module], Text] = {
+    nn.Linear: prune_config_utils.KEY_LAYER_LINEAR,
+    nn.Conv2d: prune_config_utils.KEY_LAYER_CONV2D,
+    nn.BatchNorm2d: prune_config_utils.KEY_LAYER_BATCHNORM2D,
+}
+
+CRAIG_LAYER_FUNCTION_MAP: Dict[
+    Text, Callable[..., Tuple[List[int], List[float]]]
+] = {
+    prune_config_utils.KEY_LAYER_LINEAR: prune_fc_layer_with_craig,
+    prune_config_utils.KEY_LAYER_CONV2D: prune_conv2d_layer_with_craig,
+    prune_config_utils.KEY_LAYER_BATCHNORM2D: None,
+}
 
 
 def prune_network_with_craig(
-    model: nn.Module,  # TODO: Make a base class for easier sequential_module support.
-    prune_config: prune_config_utils.PruneConfig,
-    **kwargs
+    model: nn.Module, prune_config: prune_config_utils.PruneConfig, **kwargs
 ) -> None:
     """This currently assumes that all fully connected layers are directly in
     one sequence, and that there are no non-FC layers after the last FC layer
     of that sequence."""
 
-    fc_layers: List[nn.Linear] = [
-        layer
-        for layer in model.sequential_module  # type: ignore
-        if isinstance(layer, nn.Linear)
+    def layer_checker(x) -> bool:
+        pass
+
+    prune_params: Dict = prune_config.prune_params
+    layer_params: Dict = prune_params[prune_config_utils.KEY_LAYER_PARAMS]
+    if prune_config_utils.KEY_LAYER_CONV2D in layer_params:
+        layer_checker = lambda x: (
+            isinstance(x, nn.Linear)
+            or isinstance(x, nn.Conv2d)
+            or isinstance(x, nn.BatchNorm2d)
+        )
+    else:
+        # TODO: Maybe add batchnorm support here.
+        layer_checker = lambda x: (isinstance(x, nn.Linear))
+
+    model_prunable_parameters: Any  # This should be an iterable
+    if hasattr(model, "prunable_parameters_ordered"):
+        model_prunable_parameters = model.prunable_parameters_ordered
+    else:
+        model_prunable_parameters = model.sequential_module
+
+    layers: List[nn.Linear] = [
+        layer for layer in model_prunable_parameters if layer_checker(layer)
     ]
 
     # Prune the out_features for each layer, except the output (last) layer.
-    for layer_i in range(len(fc_layers) - 1):
-        curr_layer = fc_layers[layer_i]
-        next_layer = fc_layers[layer_i + 1]
-        prune_fc_layer_with_craig(
-            curr_layer=curr_layer,
-            next_layer=next_layer,
-            prune_percent_per_layer=prune_config.prune_params[
-                "prune_percent_per_layer"
-            ],
-            similarity_metric=prune_config.prune_params["similarity_metric"],
-        )
+    for layer_i in range(len(layers) - 1):
+        curr_layer: Union[nn.Linear, nn.Conv2d, nn.BatchNorm2d] = layers[
+            layer_i
+        ]
+        next_layer: Union[nn.Linear, nn.Conv2d, nn.BatchNorm2d] = layers[
+            layer_i + 1
+        ]
+        curr_layer_type: Text = LAYER_TYPE_MAP[type(curr_layer)]
+
+        subset_nodes: List[int]
+        subset_weights: List[float]
+        subset_nodes, subset_weights = CRAIG_LAYER_FUNCTION_MAP[
+            curr_layer_type
+        ](curr_layer=curr_layer, **(layer_params[curr_layer_type]))
+
+        # Prune removed nodes from the next layer.
+        num_nodes: int = len(subset_nodes)
+        next_layer.weight = nn.Parameter(next_layer.weight[:, subset_nodes])
+        if isinstance(next_layer, nn.Linear):
+            next_layer.in_features = num_nodes
+        elif isinstance(next_layer, nn.Conv2d):
+            next_layer.in_channels = num_nodes
+            next_layer._in_channels = num_nodes  # Not sure if this is needed.
+        else:
+            raise TypeError(
+                "Pruning of layer not supported: {}".format(type(next_layer))
+            )
 
 
 def prune_network_with_mussay(
-    model: nn.Module,  # TODO: Make a base class for easier sequential_module support.
+    model: nn.Module,
     prune_config: prune_config_utils.PruneConfig,
     torch_device: torch.device,
     **kwargs
@@ -183,7 +280,12 @@ def prune_network_with_mussay(
             device=torch_device,
             activation=torch.functional.F.relu,  # TODO: Make this changeable via the config.
             compressed_size=(
-                (1 - prune_params["prune_percent_per_layer"])
+                (
+                    1
+                    - prune_params[
+                        prune_config_utils.KEY_PARAM_PRUNE_PERCENT_PER_LAYER
+                    ]
+                )
                 * curr_layer.out_features
             ),
             upper_bound=prune_params["upper_bound"],
@@ -252,18 +354,39 @@ def prune_network(
     print(model)
 
     # Save new model config.
-    # TODO: Support more model architectures.
-    fc_layers: List = [
-        layer
-        for layer in model.sequential_module
-        if isinstance(layer, nn.Linear)
-    ]
-    out_model_config_path: Text = os.path.join(
-        pruned_output_folder, FILE_NAME_MODEL_CONFIG
-    )
     model_architecture = model.ARCHITECTURE_NAME
     out_model_config: Dict
-    if model_architecture == "fc_2":
+    if model_architecture == "vgg":
+        out_model_config = {
+            "model_architecture": "vgg",
+            "model_params": {
+                "vgg_version": model.vgg_version,
+                "num_classes": model.num_classes,
+                "pretrained_imagenet": getattr(
+                    model, "pretrained_imagenet", False
+                ),
+            },
+        }
+    elif model_architecture == "fc_classifier":
+        fc_layers = [
+            layer
+            for layer in model.sequential_module
+            if isinstance(layer, nn.Linear)
+        ]
+        out_model_config = {
+            "model_architecture": "fc_classifier",
+            "model_params": {
+                "input_shape": [28, 28],
+                "layers": [l.out_features for l in fc_layers[:-1]],
+                "output_dim": 10,
+            },
+        }
+    elif model_architecture == "fc_2":
+        fc_layers = [
+            layer
+            for layer in model.sequential_module
+            if isinstance(layer, nn.Linear)
+        ]
         out_model_config = {
             "model_architecture": "fc_2",
             "model_params": {
@@ -273,18 +396,12 @@ def prune_network(
                 "output_dim": 10,
             },
         }
-    elif model_architecture == "fc_classifier":
-        out_model_config = {
-            "model_architecture": "fc_classifier",
-            "model_params": {
-                "input_shape": [28, 28],
-                "layers": [l.out_features for l in fc_layers[:-1]],
-                "output_dim": 10,
-            },
-        }
     else:
         # Not supported.
         return
+    out_model_config_path: Text = os.path.join(
+        pruned_output_folder, FILE_NAME_MODEL_CONFIG
+    )
     with open(out_model_config_path, "w") as out_model_config_file:
         json.dump(out_model_config, out_model_config_file)
 
