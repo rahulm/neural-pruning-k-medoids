@@ -6,6 +6,13 @@ from typing import Dict, Text, Tuple
 
 from . import model_config_utils
 
+KEY_LAYER_PARAMS: Text = "layer_params"
+KEY_LAYER_LINEAR: Text = "linear"
+KEY_LAYER_CONV2D: Text = "conv2d"
+KEY_LAYER_BATCHNORM2D: Text = "batchnorm2d"
+KEY_PARAM_PRUNE_PERCENT_PER_LAYER: Text = "prune_percent_per_layer"
+KEY_PARAM_SIMILARITY_METRIC: Text = "similarity_metric"
+
 
 class PruneConfig:
     """
