@@ -352,6 +352,17 @@ def get_args():
     )
 
     parser.add_argument(
+        "--experiments_root",
+        type=str,
+        required=False,
+        default="experiments",
+        help=(
+            "Root folder in which all experiment folders (by --experient_id) exist."
+            + " If not provided, this defaults to 'experiments' folder."
+        ),
+    )
+
+    parser.add_argument(
         "-i",
         "--save_interval",
         type=int,
@@ -382,7 +393,7 @@ def main() -> None:
     args = get_args()
 
     experiment_folder_path: Text = os.path.join(
-        "experiments", args.experiment_id, "training"
+        args.experiments_root, args.experiment_id, "training"
     )
     if not os.path.exists(experiment_folder_path):
         os.makedirs(experiment_folder_path)
