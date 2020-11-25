@@ -69,7 +69,7 @@ class StatCounter:
                 "{} per {}".format(ylabel.capitalize(), xlabel.capitalize()),
             )
         )
-        plt.figure()
+        # plt.figure()
         plt.plot(indices, self._counter)
         plt.xlabel(xlabel)
         plt.ylabel(ylabel)
@@ -79,6 +79,7 @@ class StatCounter:
                 folder_path, "{}{}".format(file_prefix, FILE_NAME_PLOT)
             )
         )
+        plt.close(plt.gcf())
 
 
 DATA_FOLDER_PATH: Text = os.path.join("data", "pytorch")
