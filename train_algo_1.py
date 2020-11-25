@@ -20,15 +20,20 @@ from utils import (
     train_utils,
 )
 
+FILE_NAME_FORMAT_CHECKPOINT_MODEL: Text = "checkpoint-epoch_{}-model.pth"
+BEST_CHECKPOINT_EPOCH_TEXT: Text = "best"
+
 
 def save_model_checkpoint(
-    model: torch.nn.Module, checkpoints_folder_path: Text, epoch: int
+    model: torch.nn.Module,
+    checkpoints_folder_path: Text,
+    epoch: Union[int, Text],
 ) -> None:
     torch.save(
         model,
         os.path.join(
             checkpoints_folder_path,
-            "checkpoint-epoch_{}-model.pth".format(epoch),
+            FILE_NAME_FORMAT_CHECKPOINT_MODEL.format(epoch),
         ),
     )
     # torch.save(
@@ -99,6 +104,7 @@ def train_model_with_configs(
     train_config: train_config_utils.TrainConfig,
     experiment_folder_path: Text,
     save_interval: int,
+    save_best_checkpoint_only: bool = False,
     use_gpu: bool = True,
 ) -> None:
     logger = logging_utils.get_logger(__name__)
@@ -198,6 +204,9 @@ def train_model_with_configs(
             epoch=0,
         )
 
+        # Track best test accuracy.
+        best_test_acc: float = initial_test_acc
+
         # Train.
         for epoch in range(1, train_config.num_epochs + 1):
             train(
@@ -222,8 +231,17 @@ def train_model_with_configs(
             test_loss_epochs.add(test_loss)
             scheduler.step()
 
-            # Save model checkpoint.
-            if (
+            # Save best model checkpoint, if needed.
+            if test_acc > best_test_acc:
+                best_test_acc = test_acc
+                save_model_checkpoint(
+                    model=model,
+                    checkpoints_folder_path=checkpoints_folder_path,
+                    epoch=BEST_CHECKPOINT_EPOCH_TEXT,
+                )
+
+            # Save incremental checkpoint, if needed.
+            if (not save_best_checkpoint_only) and (
                 (epoch == 1)
                 or (epoch == train_config.num_epochs)
                 or ((epoch % save_interval) == 0)
@@ -325,6 +343,14 @@ def get_args():
     )
 
     parser.add_argument(
+        "--best_checkpoint_only",
+        action="store_true",
+        required=False,
+        default=False,
+        help="Only save one best checkpoint; if enabled, --save_interval is ignored.",
+    )
+
+    parser.add_argument(
         "--no-cuda",
         action="store_true",
         default=False,
@@ -366,6 +392,7 @@ def main() -> None:
         train_config=train_config,
         experiment_folder_path=experiment_folder_path,
         save_interval=args.save_interval,
+        save_best_checkpoint_only=args.best_checkpoint_only,
         use_gpu=not args.no_cuda,
     )
 
