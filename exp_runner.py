@@ -62,6 +62,18 @@ def evaluate_model(
     return model_size, model_train_acc, model_test_acc
 
 
+def write_results_to_csv(
+    experiment_vals: List, out_folder_path: Text, datetime_string: Text
+) -> Text:
+    out_csv_path: Text = os.path.join(
+        out_folder_path, "results_raw-{}.csv".format(datetime_string),
+    )
+    with open(out_csv_path, "w", newline="") as out_csv:
+        csv_writer = csv.writer(out_csv)
+        csv_writer.writerows(experiment_vals)
+    return out_csv_path
+
+
 def run_single_experiment(
     prune_config: prune_config_utils.PruneConfig,
     prune_out_folder_path: Text,
@@ -166,6 +178,7 @@ def run_craig_experiments(
     original_model_config: Optional[model_config_utils.ModelConfig],
     original_model_results: List,
     out_folder_path: Text,
+    datetime_string: Text,
 ) -> None:
     # Logging.
     logger = logging_utils.get_logger(name=LOGGER_NAME)
@@ -231,6 +244,13 @@ def run_craig_experiments(
         )
 
         experiment_vals.append(exp_result)
+
+        # Incrementally save experiment_vals.
+        write_results_to_csv(
+            experiment_vals=experiment_vals,
+            out_folder_path=out_folder_path,
+            datetime_string=datetime_string,
+        )
 
 
 def run_mussay_experiments(
@@ -369,6 +389,7 @@ def run_experiments(
                 original_model_config=model_config,
                 original_model_results=original_model_results,
                 out_folder_path=out_folder_path,
+                datetime_string=datetime_string,
             )
         # TODO: Make Mussay compatible again.
         # elif prune_type == "mussay":
@@ -387,12 +408,11 @@ def run_experiments(
     finally:
         # Write results to csv.
         logger.info("writing final results...")
-        out_csv_path: Text = os.path.join(
-            out_folder_path, "results_raw-{}.csv".format(datetime_string),
+        out_csv_path: Text = write_results_to_csv(
+            experiment_vals=experiment_vals,
+            out_folder_path=out_folder_path,
+            datetime_string=datetime_string,
         )
-        with open(out_csv_path, "w", newline="") as out_csv:
-            csv_writer = csv.writer(out_csv)
-            csv_writer.writerows(experiment_vals)
         logger.info("results written to: {}".format(out_csv_path))
 
 
