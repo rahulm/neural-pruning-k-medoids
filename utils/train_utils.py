@@ -2,7 +2,7 @@
 
 import csv
 import os
-from typing import Callable, Dict, List, Text
+from typing import Callable, Dict, List, Optional, Text
 
 import matplotlib.pyplot as plt
 import torch
@@ -14,11 +14,19 @@ FILE_NAME_PLOT: Text = "plot.png"
 
 
 class StatCounter:
-    def __init__(self) -> None:
+    def __init__(self, default_save_params: Optional[Dict] = None) -> None:
         self._counter: List[float] = []
+        self._default_save_params: Optional[Dict] = default_save_params
 
     def add(self, val: float) -> None:
         self._counter.append(val)
+
+    def save_default(self, **kwargs) -> None:
+        save_params: Dict = {}
+        if self._default_save_params:
+            save_params.update(self._default_save_params)
+        save_params.update(kwargs)
+        self.save(**save_params)
 
     def save(
         self,
