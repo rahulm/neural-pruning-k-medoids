@@ -6,7 +6,7 @@ It may be good to rename this to something more informative.
 import importlib
 import os
 from datetime import datetime
-from typing import List, Text, Union
+from typing import List, Text, Union, Dict
 
 import torch
 import torch.nn.functional as F
@@ -106,7 +106,7 @@ def train_model_with_configs(
     save_interval: int = 1,
     save_best_checkpoint: bool = True,
     use_gpu: bool = True,
-) -> None:
+) -> Dict[Text, train_utils.StatCounter]:
     logger = logging_utils.get_logger(__name__)
     log_interval: int = 100
 
@@ -179,14 +179,14 @@ def train_model_with_configs(
             title_prefix="test_accuracy_epochs",
         )
     )
-    stat_counters: List[train_utils.StatCounter] = [
-        train_loss_batches,
-        train_loss_epochs,
-        train_acc_batches,
-        train_acc_epochs,
-        test_loss_epochs,
-        test_acc_epochs,
-    ]
+    stat_counters: Dict[Text, train_utils.StatCounter] = {
+        "train_loss_batches": train_loss_batches,
+        "train_loss_epochs": train_loss_epochs,
+        "train_acc_batches": train_acc_batches,
+        "train_acc_epochs": train_acc_epochs,
+        "test_loss_epochs": test_loss_epochs,
+        "test_acc_epochs": test_acc_epochs,
+    }
 
     # Get data.
     data_transform = train_utils.DATASET_TRANSFORMS[train_config.dataset_name]
@@ -315,12 +315,14 @@ def train_model_with_configs(
                 )
 
             # Incrementally save losses per epoch.
-            for stat_counter in stat_counters:
+            for stat_counter in stat_counters.values():
                 stat_counter.save_default()
     finally:
         # Save losses.
-        for stat_counter in stat_counters:
+        for stat_counter in stat_counters.values():
             stat_counter.save_default()
+
+        return stat_counters
 
 
 ### CLI
