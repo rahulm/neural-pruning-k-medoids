@@ -15,10 +15,10 @@ FILE_NAME_PLOT: Text = "plot.png"
 
 class StatCounter:
     def __init__(self, default_save_params: Optional[Dict] = None) -> None:
-        self._counter: List[float] = []
+        self._counter: List = []
         self._default_save_params: Optional[Dict] = default_save_params
 
-    def add(self, val: float) -> None:
+    def add(self, val) -> None:
         self._counter.append(val)
 
     def save_default(self, **kwargs) -> None:

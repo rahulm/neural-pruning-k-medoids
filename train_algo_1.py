@@ -180,6 +180,15 @@ def train_model_with_configs(
             title_prefix="test_accuracy_epochs",
         )
     )
+    model_size_epochs: train_utils.StatCounter = train_utils.StatCounter(
+        default_save_params=dict(
+            folder_path=stats_folder_path,
+            file_prefix="model_size_epochs",
+            xlabel="epoch",
+            ylabel="number of model parameters",
+            title_prefix="model_size_epochs",
+        )
+    )
     stat_counters: Dict[Text, train_utils.StatCounter] = {
         "train_loss_batches": train_loss_batches,
         "train_loss_epochs": train_loss_epochs,
@@ -187,6 +196,7 @@ def train_model_with_configs(
         "train_acc_epochs": train_acc_epochs,
         "test_loss_epochs": test_loss_epochs,
         "test_acc_epochs": test_acc_epochs,
+        "model_size_epochs": model_size_epochs,
     }
 
     # Get data.
@@ -257,6 +267,9 @@ def train_model_with_configs(
         )
         test_acc_epochs.add(initial_test_acc)
         test_loss_epochs.add(initial_test_loss)
+        model_size_epochs.add(
+            eval_model.get_number_of_model_parameters(model=model)
+        )
 
         # Save initial model checkpoint.
         if save_checkpoint_per_epoch:
@@ -291,6 +304,10 @@ def train_model_with_configs(
             )
             test_acc_epochs.add(test_acc)
             test_loss_epochs.add(test_loss)
+            model_size_epochs.add(
+                eval_model.get_number_of_model_parameters(model=model)
+            )
+
             scheduler.step()
 
             # Save best model checkpoint, if needed.
