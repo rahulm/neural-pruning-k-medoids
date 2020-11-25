@@ -6,7 +6,7 @@ It may be good to rename this to something more informative.
 import importlib
 import os
 from datetime import datetime
-from typing import Text, Union
+from typing import List, Text, Union
 
 import torch
 import torch.nn.functional as F
@@ -113,14 +113,77 @@ def train_model_with_configs(
     torch_device = torch.device("cuda" if use_gpu else "cpu")
     torch.manual_seed(train_config.random_seed)
 
-    # Set up counters.
-    train_loss_batches: train_utils.StatCounter = train_utils.StatCounter()
-    train_loss_epochs: train_utils.StatCounter = train_utils.StatCounter()
-    train_acc_batches: train_utils.StatCounter = train_utils.StatCounter()
-    train_acc_epochs: train_utils.StatCounter = train_utils.StatCounter()
+    # Set up some experiment directories.
+    checkpoints_folder_path: Text = os.path.join(
+        experiment_folder_path, "checkpoints"
+    )
+    if not os.path.exists(checkpoints_folder_path):
+        os.makedirs(checkpoints_folder_path)
+    stats_folder_path: Text = os.path.join(experiment_folder_path, "stats")
 
-    test_loss_epochs: train_utils.StatCounter = train_utils.StatCounter()
-    test_acc_epochs: train_utils.StatCounter = train_utils.StatCounter()
+    # Set up counters.
+    train_loss_batches: train_utils.StatCounter = train_utils.StatCounter(
+        default_save_params=dict(
+            folder_path=stats_folder_path,
+            file_prefix="train_loss_batches",
+            xlabel="batch",
+            ylabel="loss",
+            title_prefix="train_loss_batches",
+        )
+    )
+    train_loss_epochs: train_utils.StatCounter = train_utils.StatCounter(
+        default_save_params=dict(
+            folder_path=stats_folder_path,
+            file_prefix="train_loss_epochs",
+            xlabel="epoch",
+            ylabel="loss",
+            title_prefix="train_loss_epochs",
+        )
+    )
+    train_acc_batches: train_utils.StatCounter = train_utils.StatCounter(
+        default_save_params=dict(
+            folder_path=stats_folder_path,
+            file_prefix="train_accuracy_batches",
+            xlabel="batch",
+            ylabel="accuracy",
+            title_prefix="train_accuracy_batches",
+        )
+    )
+    train_acc_epochs: train_utils.StatCounter = train_utils.StatCounter(
+        default_save_params=dict(
+            folder_path=stats_folder_path,
+            file_prefix="train_accuracy_epochs",
+            xlabel="epoch",
+            ylabel="accuracy",
+            title_prefix="train_accuracy_epochs",
+        )
+    )
+    test_loss_epochs: train_utils.StatCounter = train_utils.StatCounter(
+        default_save_params=dict(
+            folder_path=stats_folder_path,
+            file_prefix="test_loss_epochs",
+            xlabel="epoch",
+            ylabel="loss",
+            title_prefix="test_loss_epochs",
+        )
+    )
+    test_acc_epochs: train_utils.StatCounter = train_utils.StatCounter(
+        default_save_params=dict(
+            folder_path=stats_folder_path,
+            file_prefix="test_accuracy_epochs",
+            xlabel="epoch",
+            ylabel="accuracy",
+            title_prefix="test_accuracy_epochs",
+        )
+    )
+    stat_counters: List[train_utils.StatCounter] = [
+        train_loss_batches,
+        train_loss_epochs,
+        train_acc_batches,
+        train_acc_epochs,
+        test_loss_epochs,
+        test_acc_epochs,
+    ]
 
     # Get data.
     data_transform = train_utils.DATASET_TRANSFORMS[train_config.dataset_name]
@@ -175,12 +238,6 @@ def train_model_with_configs(
     scheduler = torch.optim.lr_scheduler.StepLR(
         optimizer, step_size=train_config.lr_step_size, gamma=train_config.gamma
     )
-
-    checkpoints_folder_path: Text = os.path.join(
-        experiment_folder_path, "checkpoints"
-    )
-    if not os.path.exists(checkpoints_folder_path):
-        os.makedirs(checkpoints_folder_path)
 
     try:
         # First, get initial train and test scores.
@@ -251,53 +308,14 @@ def train_model_with_configs(
                     checkpoints_folder_path=checkpoints_folder_path,
                     epoch=epoch,
                 )
+
+            # Incrementally save losses per epoch.
+            for stat_counter in stat_counters:
+                stat_counter.save_default()
     finally:
         # Save losses.
-        stats_folder_path: Text = os.path.join(experiment_folder_path, "stats")
-        train_loss_batches.save(
-            folder_path=stats_folder_path,
-            file_prefix="train_loss_batches",
-            xlabel="batch",
-            ylabel="loss",
-            title_prefix="train_loss_batches",
-        )
-        train_loss_epochs.save(
-            folder_path=stats_folder_path,
-            file_prefix="train_loss_epochs",
-            xlabel="epoch",
-            ylabel="loss",
-            title_prefix="train_loss_epochs",
-        )
-
-        train_acc_batches.save(
-            folder_path=stats_folder_path,
-            file_prefix="train_accuracy_batches",
-            xlabel="batch",
-            ylabel="accuracy",
-            title_prefix="train_accuracy_batches",
-        )
-        train_acc_epochs.save(
-            folder_path=stats_folder_path,
-            file_prefix="train_accuracy_epochs",
-            xlabel="epoch",
-            ylabel="accuracy",
-            title_prefix="train_accuracy_epochs",
-        )
-
-        test_loss_epochs.save(
-            folder_path=stats_folder_path,
-            file_prefix="test_loss_epochs",
-            xlabel="epoch",
-            ylabel="loss",
-            title_prefix="test_loss_epochs",
-        )
-        test_acc_epochs.save(
-            folder_path=stats_folder_path,
-            file_prefix="test_accuracy_epochs",
-            xlabel="epoch",
-            ylabel="accuracy",
-            title_prefix="test_accuracy_epochs",
-        )
+        for stat_counter in stat_counters:
+            stat_counter.save_default()
 
 
 ### CLI
