@@ -103,7 +103,7 @@ def train_model_with_configs(
     model_config_or_checkpoint: Union[model_config_utils.ModelConfig, Text],
     train_config: train_config_utils.TrainConfig,
     experiment_folder_path: Text,
-    save_interval: int,
+    save_interval: int = 1,
     save_best_checkpoint_only: bool = False,
     use_gpu: bool = True,
 ) -> None:
