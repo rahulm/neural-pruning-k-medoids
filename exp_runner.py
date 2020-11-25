@@ -142,7 +142,7 @@ def run_single_experiment(
         if epoch == "best":
             test_acc_ind = max(
                 range(len(test_acc_epochs._counter)),
-                key=lambda x: test_acc_epochs._counter,
+                key=lambda x: test_acc_epochs._counter[x],
             )
             test_acc = test_acc_epochs._counter[test_acc_ind]
             train_acc = train_acc_epochs._counter[test_acc_ind]
