@@ -21,6 +21,7 @@ from utils import (
 )
 
 FILE_NAME_FORMAT_CHECKPOINT_MODEL: Text = "checkpoint-epoch_{}-model.pth"
+FOLDER_NAME_CHECKPOINTS: Text = "checkpoints"
 BEST_CHECKPOINT_EPOCH_TEXT: Text = "best"
 
 
@@ -118,7 +119,7 @@ def train_model_with_configs(
 
     # Set up some experiment directories.
     checkpoints_folder_path: Text = os.path.join(
-        experiment_folder_path, "checkpoints"
+        experiment_folder_path, FOLDER_NAME_CHECKPOINTS
     )
     if not os.path.exists(checkpoints_folder_path):
         os.makedirs(checkpoints_folder_path)
