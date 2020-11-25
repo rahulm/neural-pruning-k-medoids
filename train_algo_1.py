@@ -104,11 +104,14 @@ def train_model_with_configs(
     train_config: train_config_utils.TrainConfig,
     experiment_folder_path: Text,
     save_interval: int = 1,
-    save_best_checkpoint_only: bool = False,
+    save_best_checkpoint: bool = True,
     use_gpu: bool = True,
 ) -> None:
     logger = logging_utils.get_logger(__name__)
     log_interval: int = 100
+
+    assert save_interval >= 0, "save_interval must be >= 0"
+    save_checkpoint_per_epoch: bool = (save_interval != 0)
 
     torch_device = torch.device("cuda" if use_gpu else "cpu")
     torch.manual_seed(train_config.random_seed)
@@ -255,11 +258,12 @@ def train_model_with_configs(
         test_loss_epochs.add(initial_test_loss)
 
         # Save initial model checkpoint.
-        save_model_checkpoint(
-            model=model,
-            checkpoints_folder_path=checkpoints_folder_path,
-            epoch=0,
-        )
+        if save_checkpoint_per_epoch:
+            save_model_checkpoint(
+                model=model,
+                checkpoints_folder_path=checkpoints_folder_path,
+                epoch=0,
+            )
 
         # Track best test accuracy.
         best_test_acc: float = initial_test_acc
@@ -291,14 +295,15 @@ def train_model_with_configs(
             # Save best model checkpoint, if needed.
             if test_acc > best_test_acc:
                 best_test_acc = test_acc
-                save_model_checkpoint(
-                    model=model,
-                    checkpoints_folder_path=checkpoints_folder_path,
-                    epoch=BEST_CHECKPOINT_EPOCH_TEXT,
-                )
+                if save_best_checkpoint:
+                    save_model_checkpoint(
+                        model=model,
+                        checkpoints_folder_path=checkpoints_folder_path,
+                        epoch=BEST_CHECKPOINT_EPOCH_TEXT,
+                    )
 
             # Save incremental checkpoint, if needed.
-            if (not save_best_checkpoint_only) and (
+            if save_checkpoint_per_epoch and (
                 (epoch == 1)
                 or (epoch == train_config.num_epochs)
                 or ((epoch % save_interval) == 0)
@@ -368,15 +373,18 @@ def get_args():
         type=int,
         required=False,
         default=1,
-        help="Save interval (by epoch) for checkpoints.",
+        help=(
+            "Save interval (by epoch) for checkpoints."
+            + " Set to 0 to never save per epoch."
+        ),
     )
 
     parser.add_argument(
-        "--best_checkpoint_only",
+        "--save_best_checkpoint",
         action="store_true",
         required=False,
         default=False,
-        help="Only save one best checkpoint; if enabled, --save_interval is ignored.",
+        help="Save best checkpoint based on test accuracy.",
     )
 
     parser.add_argument(
@@ -421,7 +429,7 @@ def main() -> None:
         train_config=train_config,
         experiment_folder_path=experiment_folder_path,
         save_interval=args.save_interval,
-        save_best_checkpoint_only=args.best_checkpoint_only,
+        save_best_checkpoint=args.best_checkpoint,
         use_gpu=not args.no_cuda,
     )
 
