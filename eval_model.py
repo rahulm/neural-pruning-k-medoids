@@ -10,6 +10,18 @@ import torchvision
 from utils import train_utils
 
 
+def get_number_of_model_parameters(model: torch.nn.Module) -> int:
+    return sum(
+        dict((p.data_ptr(), p.numel()) for p in model.parameters()).values()
+    )
+
+
+def get_number_of_model_parameters_from_path(model_path: Text) -> int:
+    return get_number_of_model_parameters(
+        torch.load(model_path, map_location=torch.device("cpu"))
+    )
+
+
 def evaluate_model(
     model: torch.nn.Module,
     dataloader: torch.utils.data.DataLoader,
