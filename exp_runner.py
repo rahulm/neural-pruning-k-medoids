@@ -466,6 +466,8 @@ def main() -> None:
             args.out_folder, "runner-log-{}.txt".format(datetime_string),
         )
     )
+    logger = logging_utils.get_logger(LOGGER_NAME)
+    logger.info(args)
 
     exp_config: exp_config_utils.ExpConfig = exp_config_utils.get_config_from_file(
         config_file_loc=args.config
