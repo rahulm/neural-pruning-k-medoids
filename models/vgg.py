@@ -35,33 +35,13 @@ class Model(nn.Module):
             **kwargs
         )
 
-        # self.prunable_parameters_ordered: List[nn.Module] = [
-        #     layer
-        #     for layer in (
-        #         list(self.pytorch_model.features)
-        #         + list(self.pytorch_model.classifier)
-        #     )
-        #     if (
-        #         isinstance(layer, nn.Linear)
-        #         or isinstance(layer, nn.Conv2d)
-        #         or isinstance(layer, nn.BatchNorm2d)
-        #     )
-        # ]
-
     @property
     def prunable_parameters_ordered(self) -> List[nn.Module]:
-        return [
-            layer
-            for layer in (
-                list(self.pytorch_model.features)
-                + list(self.pytorch_model.classifier)
-            )
-            if (
-                isinstance(layer, nn.Linear)
-                or isinstance(layer, nn.Conv2d)
-                or isinstance(layer, nn.BatchNorm2d)
-            )
-        ]
+        return (
+            list(self.pytorch_model.features)
+            + [self.pytorch_model.avgpool]
+            + list(self.pytorch_model.classifier)
+        )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.pytorch_model(x)
