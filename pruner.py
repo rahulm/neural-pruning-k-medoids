@@ -2,7 +2,19 @@
 
 import json
 import os
-from typing import Any, Callable, Dict, List, Set, Text, Tuple, Type, Union
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Sequence,
+    Set,
+    Text,
+    Tuple,
+    Type,
+    Union,
+)
 
 import numpy as np
 import sklearn.metrics
@@ -175,6 +187,10 @@ LAYER_TYPE_MAP: Dict[Type[nn.Module], Text] = {
     nn.Linear: prune_config_utils.KEY_LAYER_LINEAR,
     nn.Conv2d: prune_config_utils.KEY_LAYER_CONV2D,
     nn.BatchNorm2d: prune_config_utils.KEY_LAYER_BATCHNORM2D,
+    nn.ReLU: "relu",
+    nn.AdaptiveAvgPool2d: "adaptiveavgpool2d",
+    nn.MaxPool2d: "maxpool2d",
+    nn.Dropout: "dropout",
 }
 
 CRAIG_LAYER_FUNCTION_MAP: Dict[
@@ -182,7 +198,7 @@ CRAIG_LAYER_FUNCTION_MAP: Dict[
 ] = {
     prune_config_utils.KEY_LAYER_LINEAR: prune_fc_layer_with_craig,
     prune_config_utils.KEY_LAYER_CONV2D: prune_conv2d_layer_with_craig,
-    prune_config_utils.KEY_LAYER_BATCHNORM2D: None,
+    # prune_config_utils.KEY_LAYER_BATCHNORM2D: None,
 }
 
 
@@ -192,21 +208,26 @@ def prune_network_with_craig(
     """This currently assumes that all fully connected layers are directly in
     one sequence, and that there are no non-FC layers after the last FC layer
     of that sequence."""
-
-    def layer_checker(x) -> bool:
-        pass
+    """
+    NOTE:   Across each pooling layer, the number of channels stays
+            constant (I think); this is why conv layers on either side of
+            a pooling layer can share the same out_channels and in_channels
+            values, respectively, without worrying about the actual height
+            and width. (I think this is the same for both MaxPool and AvgPool).
+            So, when we reach something like a fully connected layer, which
+            requires a fixed input size, we have to use a pooling layer
+            that outputs a constant size tensor, like the AdaptiveAvgPool2d.
+            Since in the previous conv layer we would have pruned only the
+            number of out_channels, then we can assume that the output of
+            the AdaptiveAvgPool2d layer has the same number of pruned
+            channels.
+            So, based on the way the post-pooling pre-fc flatten works, we
+            can find the subset of channels that were not pruned, and only
+            keep the corresponding weights in the fc network.
+    """
 
     prune_params: Dict = prune_config.prune_params
     layer_params: Dict = prune_params[prune_config_utils.KEY_LAYER_PARAMS]
-    if prune_config_utils.KEY_LAYER_CONV2D in layer_params:
-        layer_checker = lambda x: (
-            isinstance(x, nn.Linear)
-            or isinstance(x, nn.Conv2d)
-            or isinstance(x, nn.BatchNorm2d)
-        )
-    else:
-        # TODO: Maybe add batchnorm support here.
-        layer_checker = lambda x: (isinstance(x, nn.Linear))
 
     model_prunable_parameters: Any  # This should be an iterable
     if hasattr(model, "prunable_parameters_ordered"):
@@ -214,38 +235,126 @@ def prune_network_with_craig(
     else:
         model_prunable_parameters = model.sequential_module
 
-    layers: List[nn.Linear] = [
-        layer for layer in model_prunable_parameters if layer_checker(layer)
-    ]
+    num_prunable_parameters: int = len(model_prunable_parameters)
+    output_layer_index: int = num_prunable_parameters - 1
+    curr_layer_i: int = 0
 
-    # Prune the out_features for each layer, except the output (last) layer.
-    for layer_i in range(len(layers) - 1):
-        curr_layer: Union[nn.Linear, nn.Conv2d, nn.BatchNorm2d] = layers[
-            layer_i
-        ]
-        next_layer: Union[nn.Linear, nn.Conv2d, nn.BatchNorm2d] = layers[
-            layer_i + 1
-        ]
+    while curr_layer_i < output_layer_index:
+        curr_layer: nn.Module = model_prunable_parameters[curr_layer_i]
         curr_layer_type: Text = LAYER_TYPE_MAP[type(curr_layer)]
 
+        if curr_layer_type not in CRAIG_LAYER_FUNCTION_MAP:
+            # If the curr_layer is not prunable, skip.
+            curr_layer_i += 1
+            continue
+
+        # curr_layer is prunable, prune.
         subset_nodes: List[int]
         subset_weights: List[float]
         subset_nodes, subset_weights = CRAIG_LAYER_FUNCTION_MAP[
             curr_layer_type
         ](curr_layer=curr_layer, **(layer_params[curr_layer_type]))
 
-        # Prune removed nodes from the next layer.
-        num_nodes: int = len(subset_nodes)
-        next_layer.weight = nn.Parameter(next_layer.weight[:, subset_nodes])
-        if isinstance(next_layer, nn.Linear):
-            next_layer.in_features = num_nodes
-        elif isinstance(next_layer, nn.Conv2d):
-            next_layer.in_channels = num_nodes
-            next_layer._in_channels = num_nodes  # Not sure if this is needed.
-        else:
-            raise TypeError(
-                "Pruning of layer not supported: {}".format(type(next_layer))
-            )
+        # Save current layer output shape (or required values) for future use.
+        previous_shape: Sequence[int]
+        previous_shape_is_constant: bool
+        if curr_layer_type == prune_config_utils.KEY_LAYER_LINEAR:
+            previous_shape = [curr_layer.out_features]
+            previous_shape_is_constant = True
+        elif curr_layer_type == prune_config_utils.KEY_LAYER_CONV2D:
+            previous_shape = [curr_layer.out_channels]
+            previous_shape_is_constant = False
+
+        # Find the next prunable layer to update weights.
+        next_layer_i: int = curr_layer_i + 1
+        while next_layer_i < num_prunable_parameters:
+            next_layer: nn.Module = model_prunable_parameters[next_layer_i]
+            next_layer_type: Text = LAYER_TYPE_MAP[type(next_layer)]
+
+            # If next_layer is prunable, then remove unused nodes.
+            if next_layer_type in CRAIG_LAYER_FUNCTION_MAP:
+                if isinstance(next_layer, nn.Linear):
+                    if (not previous_shape_is_constant) or (not previous_shape):
+                        raise ValueError(
+                            "Shape of inputs must be constant for FC layer: {}".format(
+                                next_layer
+                            )
+                        )
+
+                    # NOTE: Currently, only supporting CNNs with explicitly
+                    #       constant size inputs to each FC layer. May need to
+                    #       figure out how to support inputs that are
+                    #       implicitly constant, based on some model input size.
+
+                    # Assumes input uses torch.flatten conventions.
+                    # Keeps channels that were part of the subset_nodes.
+                    mapping_multiplier: int = int(
+                        np.prod(previous_shape[1:])
+                    )  # H*W, or 1
+                    mapped_nodes: List[int] = []
+                    for node in subset_nodes:
+                        map_base: int = node * mapping_multiplier
+                        for i in range(mapping_multiplier):
+                            mapped_nodes.append(map_base + i)
+
+                    num_nodes = len(mapped_nodes)
+                    next_layer.weight = nn.Parameter(
+                        next_layer.weight[:, mapped_nodes]
+                    )
+                    next_layer.in_features = num_nodes
+                elif isinstance(next_layer, nn.Conv2d):
+                    # NOTE: Currently, only supporting conv layers followed by
+                    #       conv layers, since that is the most common. So,
+                    #       this assumes that the number of out_channels does
+                    #       not change over pooling layers, batchnorm,
+                    #       dropout, etc.
+                    #       Need to add support for linear (or other) layers
+                    #       followed by conv layers, where the number of
+                    #       channels changes.
+                    num_nodes = len(subset_nodes)
+                    next_layer.weight = nn.Parameter(
+                        next_layer.weight[:, subset_nodes]
+                    )
+                    next_layer.in_channels = num_nodes
+                    next_layer._in_channels = (
+                        num_nodes  # Not sure if this is needed.
+                    )
+                else:
+                    raise TypeError(
+                        "Pruning of layer not supported: {}".format(
+                            type(next_layer)
+                        )
+                    )
+                break
+
+            # Otherwise, not prunable:
+            # - Update subset/previous_shape as needed.
+            # - Continue searching.
+
+            # Update subset/previous_shape as needed.
+            # NOTE: Should not see any prunable layers here.
+            if next_layer_type == "adaptiveavgpool2d":
+                if not previous_shape:
+                    raise ValueError(
+                        "previous_shape must be non-empty before adaptiveavgpool2d, found: {}".format(
+                            previous_shape
+                        )
+                    )
+                next_shape: Sequence[int] = [
+                    previous_shape[0],
+                    next_layer.output_size[0],
+                    next_layer.output_size[1],
+                ]
+                previous_shape = next_shape
+
+                previous_shape_is_constant = True
+
+            # Continue searching.
+            # curr_layer_i = next_layer_i
+            next_layer_i += 1
+
+        # Update curr_layer_i pointer before continuing.
+        curr_layer_i = next_layer_i
 
 
 def prune_network_with_mussay(
@@ -350,7 +459,7 @@ def prune_network(
         pruned_output_folder, FILE_NAME_WEIGHT_ONLY
     )
     torch.save(model, out_model_path)
-    torch.save(model.state_dict(), out_weights_path)
+    # torch.save(model.state_dict(), out_weights_path)
     print(model)
 
     # Save new model config.
