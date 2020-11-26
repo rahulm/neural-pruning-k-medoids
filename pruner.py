@@ -414,11 +414,13 @@ def prune_network_with_mussay(
 def prune_network(
     prune_config: prune_config_utils.PruneConfig,
     pruned_output_folder: Text,
+    model_checkpoint_path: Optional[Text] = None,
     **kwargs
 ) -> None:
-    """This currently assumes that all fully connected layers are directly in
-    one sequence, and that there are no non-FC layers after the last FC layer
-    of that sequence."""
+    """
+    Can provide a model_checkpoint_path to override any model checkpoint path
+    specified in prune_config. 
+    """
 
     if not os.path.exists(pruned_output_folder):
         os.makedirs(pruned_output_folder)
@@ -429,7 +431,12 @@ def prune_network(
     )
 
     # Load model.
-    model_path: Text = prune_config.original_model_path
+    model_path: Text
+    if model_checkpoint_path:
+        model_path = model_checkpoint_path
+        prune_config.original_model_path = model_checkpoint_path
+    else:
+        model_path = prune_config.original_model_path
     load_location = torch.device("cpu")  # Can make this None, as default
     model = torch.load(model_path, map_location=load_location)
 
@@ -534,6 +541,15 @@ def get_args():
     )
 
     parser.add_argument(
+        "-m",
+        "--model",
+        type=str,
+        required=False,
+        default=None,
+        help="Path to model checkpoint. Overrides path from prune config.",
+    )
+
+    parser.add_argument(
         "-o",
         "--out_folder",
         type=str,
@@ -557,7 +573,11 @@ def main() -> None:
         args.out_folder if args.out_folder else config.pruned_model_out_folder
     )
 
-    prune_network(config, pruned_output_folder)
+    prune_network(
+        prune_config=config,
+        pruned_output_folder=pruned_output_folder,
+        model_checkpoint_path=args.model,
+    )
 
 
 if __name__ == "__main__":
