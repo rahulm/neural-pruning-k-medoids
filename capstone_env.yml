@@ -1,15 +1,18 @@
 name: capstone
 channels:
+  - pytorch
   - conda-forge
   - defaults
 dependencies:
   - _tflow_select=2.1.0=gpu
   - absl-py=0.11.0=py37haa95532_0
   - aiohttp=3.6.3=py37he774522_0
+  - appdirs=1.4.4=py_0
   - astor=0.8.1=py37_0
   - async-timeout=3.0.1=py37_0
   - attrs=20.3.0=pyhd3eb1b0_0
   - bitarray=1.6.0=py37he774522_0
+  - black=19.10b0=py_0
   - blas=1.0=mkl
   - blinker=1.4=py37_0
   - brotlipy=0.7.0=py37he774522_1000
@@ -45,6 +48,7 @@ dependencies:
   - libpng=1.6.37=h2a8f88b_0
   - libprotobuf=3.13.0.1=h200bbdf_0
   - libtiff=4.1.0=h56a325e_1
+  - libuv=1.40.0=he774522_0
   - lz4-c=1.9.2=hf4a77e7_3
   - markdown=3.3.2=py37_0
   - matplotlib=3.3.2=0
@@ -54,7 +58,10 @@ dependencies:
   - mkl_fft=1.2.0=py37h45dec08_0
   - mkl_random=1.1.1=py37h47e9c7a_0
   - multidict=4.7.6=py37he774522_1
+  - mypy=0.790=py_0
+  - mypy_extensions=0.4.3=py37_0
   - nearpy=1.0.0=py_0
+  - ninja=1.10.1=py37h7ef1ec2_0
   - numpy=1.19.2=py37hadc3359_0
   - numpy-base=1.19.2=py37ha3acd2a_0
   - oauthlib=3.1.0=py_0
@@ -62,9 +69,11 @@ dependencies:
   - openssl=1.1.1h=he774522_0
   - opt_einsum=3.1.0=py_0
   - pandas=1.1.3=py37ha925a31_0
+  - pathspec=0.7.0=py_0
   - pillow=8.0.1=py37h4fa10fc_0
   - pip=20.2.4=py37haa95532_0
   - protobuf=3.13.0.1=py37ha925a31_1
+  - psutil=5.7.2=py37he774522_0
   - pyasn1=0.4.8=py_0
   - pyasn1-modules=0.2.8=py_0
   - pycparser=2.20=py_2
@@ -76,8 +85,10 @@ dependencies:
   - pysocks=1.7.1=py37_1
   - python=3.7.9=h60c2a47_0
   - python-dateutil=2.8.1=py_0
+  - pytorch=1.7.0=py3.7_cuda101_cudnn7_0
   - pytz=2020.1=py_0
   - qt=5.9.7=vc14h73c81de_0
+  - regex=2020.10.15=py37he774522_0
   - requests=2.24.0=py_0
   - requests-oauthlib=1.3.0=py_0
   - rsa=4.6=py_0
@@ -96,7 +107,12 @@ dependencies:
   - termcolor=1.1.0=py37_1
   - threadpoolctl=2.1.0=pyh5ca1d4c_0
   - tk=8.6.10=he774522_0
+  - toml=0.10.1=py_0
+  - torchaudio=0.7.0=py37
+  - torchvision=0.8.1=py37_cu101
   - tornado=6.0.4=py37he774522_1
+  - typed-ast=1.4.1=py37he774522_0
+  - typing_extensions=3.7.4.3=py_0
   - urllib3=1.25.11=py_0
   - vc=14.1=h0510ff6_4
   - vs2015_runtime=14.16.27012=hf0eaf9b_3
@@ -110,4 +126,3 @@ dependencies:
   - zipp=3.4.0=pyhd3eb1b0_0
   - zlib=1.2.11=h62dcd97_4
   - zstd=1.4.5=h04227a9_0
-prefix: C:\Users\rahul\Miniconda3\envs\capstone
