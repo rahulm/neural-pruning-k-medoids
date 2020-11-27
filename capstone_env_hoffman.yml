@@ -1,5 +1,6 @@
 name: capstone
 channels:
+  - pytorch
   - conda-forge
   - defaults
 dependencies:
@@ -20,7 +21,7 @@ dependencies:
   - nearpy=1.0.0=py_0
   - olefile=0.46=py37_0
   - pathspec=0.7.0=py_0
-  - pip=20.2.4=py37haa95532_0
+  - pip=20.2.4
   - pyparsing=2.4.7=py_0
   - python-dateutil=2.8.1=py_0
   - pytz=2020.1=py_0
