@@ -442,7 +442,7 @@ def main() -> None:
         train_config=train_config,
         experiment_folder_path=experiment_folder_path,
         save_interval=args.save_interval,
-        save_best_checkpoint=args.best_checkpoint,
+        save_best_checkpoint=args.save_best_checkpoint,
         use_gpu=not args.no_cuda,
     )
 
