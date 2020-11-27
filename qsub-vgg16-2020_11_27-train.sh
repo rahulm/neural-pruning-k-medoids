@@ -2,10 +2,10 @@
 #!/bin/bash
 #$ -cwd
 # error = Merged with joblog
-#$ -o joblog.$JOB_ID
+#$ -o /u/scratch/r/rahulm/capstone/joblogs/joblog.$JOB_ID
 #$ -j y
 ## Edit the line below as needed:
-#$ -l gpu,P4,h_rt=8:00:00,h_data=4G,h_vmem=4G
+#$ -l gpu,P4,h_rt=8:00:00,h_data=22G,h_vmem=22G
 ## Modify the parallel environment
 ## and the number of cores as needed:
 #$ -pe shared 1
