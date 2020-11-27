@@ -32,7 +32,7 @@ dependencies:
   - typing_extensions=3.7.4.3=py_0
   - wheel=0.35.1=pyhd3eb1b0_0
   - pip:
-    - libpng==1.6.37=h2a8f88b_0
+    - libpng==1.6.37
     - regex==2020.10.15=py37he774522_0
     - icu==58.2=ha925a31_3
     - freetype==2.10.4=hd328e21_0
