@@ -15,7 +15,7 @@ python train_algo_1.py \
     --train_config $OUT_FOLDER/config-train.json \
     --model_config $OUT_FOLDER/config-model.json \
     --out_folder $OUT_FOLDER/training \
-    --save_interval 0
+    --save_interval 0 \
     --save_best_checkpoint
 
 conda deactivate
