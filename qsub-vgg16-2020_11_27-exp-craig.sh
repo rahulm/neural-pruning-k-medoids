@@ -5,7 +5,7 @@
 #$ -o /u/scratch/r/rahulm/capstone/joblogs/joblog.$JOB_ID.$TASK_ID
 #$ -j y
 ## Edit the line below as needed:
-#$ -l gpu,P4,h_rt=4:00:00,h_data=22G,h_vmem=22G
+#$ -l gpu,P4,h_rt=4:00:00,h_data=4G
 ## Modify the parallel environment
 ## and the number of cores as needed:
 #$ -pe shared 1
