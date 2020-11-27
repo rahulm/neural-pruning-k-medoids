@@ -4,10 +4,12 @@ import argparse
 import csv
 import itertools
 import os
+import random
 import shutil
+import time
 from collections import OrderedDict
 from datetime import datetime
-from typing import Dict, List, Optional, Text, Tuple, Union, Sequence
+from typing import Dict, List, Optional, Sequence, Text, Tuple, Union
 
 import eval_model
 import pruner
@@ -460,14 +462,27 @@ def main() -> None:
     args = get_args()
 
     # Logging.
-    datetime_string: Text = datetime.now().strftime("%Y_%m_%d-%H_%M_%S")
-    logging_utils.setup_logging(
-        os.path.join(
-            args.out_folder, "runner-log-{}.txt".format(datetime_string),
-        )
-    )
-    logger = logging_utils.get_logger(LOGGER_NAME)
-    logger.info(args)
+    # Assuming that an existing log file means that the corresponding results file will be taken.
+    datetime_string: Text
+    while True:
+        datetime_string = datetime.now().strftime("%Y_%m_%d-%H_%M_%S")
+        try:
+            logging_utils.setup_logging(
+                os.path.join(
+                    args.out_folder,
+                    "runner-log-{}.txt".format(datetime_string),
+                ),
+                file_mode="x",  # Use "x" to make sure this specific task id does not conflict.
+            )
+        except:
+            # Try again
+            time.sleep(random.random() * 2)  # Sleep up to 2 seconds.
+            continue
+
+        # If creation worked, exit loop.
+        logger = logging_utils.get_logger(LOGGER_NAME)
+        logger.info(args)
+        break
 
     exp_config: exp_config_utils.ExpConfig = exp_config_utils.get_config_from_file(
         config_file_loc=args.exp_config
