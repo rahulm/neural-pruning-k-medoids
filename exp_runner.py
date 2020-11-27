@@ -425,8 +425,8 @@ def get_args():
     )
 
     parser.add_argument(
-        "-c",
-        "--config",
+        "-e",
+        "--exp_config",
         type=str,
         required=True,
         help="Path to the experiment config JSON.",
@@ -470,7 +470,7 @@ def main() -> None:
     logger.info(args)
 
     exp_config: exp_config_utils.ExpConfig = exp_config_utils.get_config_from_file(
-        config_file_loc=args.config
+        config_file_loc=args.exp_config
     )
     model_config: Optional[model_config_utils.ModelConfig] = None
     if args.model_config:
