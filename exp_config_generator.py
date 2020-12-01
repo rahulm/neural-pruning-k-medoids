@@ -20,6 +20,8 @@ def create_exp_configs(original_config_path: Text):
     param_name_map: List[Text] = []
     layer_name_map: List[Text] = []
     for layer_name in layer_names:
+        if layer_name not in to_search:
+            continue
         for param_name in param_names:
             all_param_values.append(to_search[layer_name][param_name])
             layer_name_map.append(layer_name)
