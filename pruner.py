@@ -243,8 +243,10 @@ def prune_network_with_craig(
         curr_layer: nn.Module = model_prunable_parameters[curr_layer_i]
         curr_layer_type: Text = LAYER_TYPE_MAP[type(curr_layer)]
 
-        if curr_layer_type not in CRAIG_LAYER_FUNCTION_MAP:
-            # If the curr_layer is not prunable, skip.
+        if (curr_layer_type not in CRAIG_LAYER_FUNCTION_MAP) or (
+            curr_layer_type not in layer_params
+        ):
+            # If the curr_layer is not prunable, or not configured, skip.
             curr_layer_i += 1
             continue
 
@@ -256,6 +258,7 @@ def prune_network_with_craig(
         ](curr_layer=curr_layer, **(layer_params[curr_layer_type]))
 
         # Save current layer output shape (or required values) for future use.
+        # NOTE: Maybe add an input_shape config parameter to calculate output size?
         previous_shape: Sequence[int]
         previous_shape_is_constant: bool
         if curr_layer_type == prune_config_utils.KEY_LAYER_LINEAR:
