@@ -20,6 +20,7 @@ import numpy as np
 import sklearn.metrics
 import torch
 from torch import nn
+import random
 
 import craig
 from mussay_neural_pruning import coreset
@@ -90,7 +91,8 @@ class SimilarityMetrics:
 def prune_fc_layer_with_craig(
     curr_layer: nn.Linear,
     prune_percent_per_layer: float,
-    similarity_metric: Text,
+    similarity_metric: Text = "",
+    prune_type: Text = "craig",
     **kwargs
 ) -> Tuple[List[int], List[float]]:
     assert (0 <= prune_percent_per_layer) and (
@@ -99,29 +101,45 @@ def prune_fc_layer_with_craig(
         prune_percent_per_layer
     )
 
+    assert prune_type in (
+        "craig",
+        "random",
+    ), "prune_type must be 'craig' or 'random'"
+
+    assert (prune_type == "random") or (
+        similarity_metric
+    ), "similarity_metric must be set for prune_type '{}'".format(prune_type)
+
     original_num_nodes: int = curr_layer.out_features
     original_nodes = list(range(original_num_nodes))
     target_num_nodes: int = int(
         (1 - prune_percent_per_layer) * original_num_nodes
     )
 
-    similarity_matrix = getattr(SimilarityMetrics, similarity_metric)(
-        curr_layer
-    )
-    facility_location: craig.FacilityLocation = craig.FacilityLocation(
-        D=similarity_matrix, V=original_nodes
-    )
+    subset_nodes: List
+    subset_weights: List
 
-    subset_nodes, subset_weights = craig.lazy_greedy_heap(
-        F=facility_location, V=original_nodes, B=target_num_nodes
-    )
-    subset_weights_tensor = torch.tensor(subset_weights)
+    if prune_type == "random":
+        subset_nodes = random.sample(original_nodes, target_num_nodes)
+        subset_weights = [1 for _ in subset_nodes]
+    else:  # Assumes similarity_metric is set correctly.
+        similarity_matrix = getattr(SimilarityMetrics, similarity_metric)(
+            curr_layer
+        )
+        facility_location: craig.FacilityLocation = craig.FacilityLocation(
+            D=similarity_matrix, V=original_nodes
+        )
+
+        subset_nodes, subset_weights = craig.lazy_greedy_heap(
+            F=facility_location, V=original_nodes, B=target_num_nodes
+        )
 
     # Remove nodes+weights+biases, and adjust weights.
     num_nodes: int = len(subset_nodes)
 
     # Prune current layer.
     # Multiply weights (and biases?) by subset_weights.
+    subset_weights_tensor = torch.tensor(subset_weights)
     curr_layer.weight = nn.Parameter(
         curr_layer.weight[subset_nodes]
         * subset_weights_tensor.reshape((num_nodes, 1))
@@ -138,7 +156,8 @@ def prune_fc_layer_with_craig(
 def prune_conv2d_layer_with_craig(
     curr_layer: nn.Conv2d,
     prune_percent_per_layer: float,
-    similarity_metric: Text,
+    similarity_metric: Text = "",
+    prune_type: Text = "craig",
     **kwargs
 ) -> Tuple[List[int], List[float]]:
     assert (0 <= prune_percent_per_layer) and (
@@ -147,29 +166,45 @@ def prune_conv2d_layer_with_craig(
         prune_percent_per_layer
     )
 
+    assert prune_type in (
+        "craig",
+        "random",
+    ), "prune_type must be 'craig' or 'random'"
+
+    assert (prune_type == "random") or (
+        similarity_metric
+    ), "similarity_metric must be set for prune_type '{}'".format(prune_type)
+
     original_num_nodes: int = curr_layer.out_channels
     original_nodes = list(range(original_num_nodes))
     target_num_nodes: int = int(
         (1 - prune_percent_per_layer) * original_num_nodes
     )
 
-    similarity_matrix = getattr(SimilarityMetrics, similarity_metric)(
-        curr_layer
-    )
-    facility_location: craig.FacilityLocation = craig.FacilityLocation(
-        D=similarity_matrix, V=original_nodes
-    )
+    subset_nodes: List
+    subset_weights: List
 
-    subset_nodes, subset_weights = craig.lazy_greedy_heap(
-        F=facility_location, V=original_nodes, B=target_num_nodes
-    )
-    subset_weights_tensor = torch.tensor(subset_weights)
+    if prune_type == "random":
+        subset_nodes = random.sample(original_nodes, target_num_nodes)
+        subset_weights = [1 for _ in subset_nodes]
+    else:  # Assumes similarity_metric is set correctly.
+        similarity_matrix = getattr(SimilarityMetrics, similarity_metric)(
+            curr_layer
+        )
+        facility_location: craig.FacilityLocation = craig.FacilityLocation(
+            D=similarity_matrix, V=original_nodes
+        )
+
+        subset_nodes, subset_weights = craig.lazy_greedy_heap(
+            F=facility_location, V=original_nodes, B=target_num_nodes
+        )
 
     # Remove nodes+weights+biases, and adjust weights.
     num_nodes: int = len(subset_nodes)
 
     # Prune current layer.
     # Multiply weights (and biases?) by subset_weights.
+    subset_weights_tensor = torch.tensor(subset_weights)
     curr_layer.weight = nn.Parameter(
         curr_layer.weight[subset_nodes]
         * subset_weights_tensor.reshape((num_nodes, 1, 1, 1))
