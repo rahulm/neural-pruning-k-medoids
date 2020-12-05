@@ -14,7 +14,9 @@
 # Notify when
 #$ -m bea
 # Job task array
-#$ -t 1-9:1
+#$ -t 1-18:1
+
+# TODO: Need to update the h_rt and h_data as needed to run experiments.
 
 # echo job info on joblog:
 echo "Job $JOB_ID.$SGE_TASK_ID started on:   " `hostname -s`
@@ -32,15 +34,13 @@ module load python/anaconda3
 #conda activate pytorch-1.3.1-gpu
 conda activate capstone
 
-# TODO: Need to update this to only test 80-99.5% compression, per percent.
 # Run training
-EXP_FOLDER="$SCRATCH/capstone/experiments/lenet_300_100-mnist-2020_12_04"
-EXP_NAME="random"
+OUT_FOLDER="$SCRATCH/capstone/experiments/vgg16-cifar10-2020_11_27"
 python exp_runner.py \
-    --exp_config $EXP_FOLDER/config-exp-$EXP_NAME/config-exp-$EXP_NAME.$SGE_TASK_ID.json \
-    --model_checkpoint $EXP_FOLDER/training/checkpoints/checkpoint-epoch_best-model.pth \
-    --model_config $EXP_FOLDER/config-model.json \
-    --out_folder $EXP_FOLDER/pruning-$EXP_NAME
+    --exp_config $OUT_FOLDER/config-exp-craig_1_fc_only/config-exp-craig_1_fc_only.$SGE_TASK_ID.json \
+    --model_checkpoint $OUT_FOLDER/training/checkpoints/checkpoint-epoch_best-model.pth \
+    --model_config $OUT_FOLDER/config-model.json \
+    --out_folder $OUT_FOLDER/pruning-craig_1_fc_only
 
 conda deactivate
 

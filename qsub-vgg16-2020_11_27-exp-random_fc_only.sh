@@ -14,9 +14,7 @@
 # Notify when
 #$ -m bea
 # Job task array
-#$ -t 1-9:1
-
-# TODO: Need to update the h_rt and h_data as needed to run experiments.
+#$ -t 1-10:1
 
 # echo job info on joblog:
 echo "Job $JOB_ID.$SGE_TASK_ID started on:   " `hostname -s`
@@ -36,7 +34,7 @@ conda activate capstone
 
 # Run training
 EXP_FOLDER="$SCRATCH/capstone/experiments/vgg16-cifar10-2020_11_27"
-EXP_NAME="random_fc_only"
+EXP_NAME="high_comp_fc_only_random"
 python exp_runner.py \
     --exp_config $EXP_FOLDER/config-exp-$EXP_NAME/config-exp-$EXP_NAME.$SGE_TASK_ID.json \
     --model_checkpoint $EXP_FOLDER/training/checkpoints/checkpoint-epoch_best-model.pth \

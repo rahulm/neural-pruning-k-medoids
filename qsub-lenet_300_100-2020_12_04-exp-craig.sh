@@ -16,8 +16,6 @@
 # Job task array
 #$ -t 1-18:1
 
-# TODO: Need to update the h_rt and h_data as needed to run experiments.
-
 # echo job info on joblog:
 echo "Job $JOB_ID.$SGE_TASK_ID started on:   " `hostname -s`
 echo "Job $JOB_ID.$SGE_TASK_ID started on:   " `date `
@@ -34,6 +32,7 @@ module load python/anaconda3
 #conda activate pytorch-1.3.1-gpu
 conda activate capstone
 
+# TODO: Need to update this to only test 80-99.5% compression, per percent.
 # Run training
 EXP_FOLDER="$SCRATCH/capstone/experiments/lenet_300_100-mnist-2020_12_04"
 EXP_NAME="craig"
