@@ -14,7 +14,7 @@
 # Notify when
 #$ -m bea
 # Job task array
-#$ -t 1-18:1
+#$ -t 1-9:1
 
 # TODO: Need to update the h_rt and h_data as needed to run experiments.
 
@@ -35,12 +35,13 @@ module load python/anaconda3
 conda activate capstone
 
 # Run training
-OUT_FOLDER="$SCRATCH/capstone/experiments/vgg16-cifar10-2020_11_27"
+EXP_FOLDER="$SCRATCH/capstone/experiments/vgg16-cifar10-2020_11_27"
+EXP_NAME="fc_only_random"
 python exp_runner.py \
-    --exp_config $OUT_FOLDER/config-exp-craig_1_fc_only/config-exp-craig_1_fc_only.$SGE_TASK_ID.json \
-    --model_checkpoint $OUT_FOLDER/training/checkpoints/checkpoint-epoch_best-model.pth \
-    --model_config $OUT_FOLDER/config-model.json \
-    --out_folder $OUT_FOLDER/pruning-craig_1_fc_only
+    --exp_config $EXP_FOLDER/config-exp-$EXP_NAME/config-exp-$EXP_NAME.$SGE_TASK_ID.json \
+    --model_checkpoint $EXP_FOLDER/training/checkpoints/checkpoint-epoch_best-model.pth \
+    --model_config $EXP_FOLDER/config-model.json \
+    --out_folder $EXP_FOLDER/pruning-$EXP_NAME
 
 conda deactivate
 
