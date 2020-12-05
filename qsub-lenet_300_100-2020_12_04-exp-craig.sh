@@ -37,7 +37,7 @@ conda activate capstone
 EXP_FOLDER="$SCRATCH/capstone/experiments/lenet_300_100-mnist-2020_12_04"
 EXP_NAME="craig"
 python exp_runner.py \
-    --exp_config $EXP_FOLDER/config-exp-$EXP_NAME/config-exp-$EXP_NAME.$SGE_TASK_ID.json \
+    --exp_config $EXP_FOLDER/config-exp-$EXP_NAME/config-exp.$SGE_TASK_ID.json \
     --model_checkpoint $EXP_FOLDER/training/checkpoints/checkpoint-epoch_best-model.pth \
     --model_config $EXP_FOLDER/config-model.json \
     --out_folder $EXP_FOLDER/pruning-$EXP_NAME
