@@ -29,6 +29,19 @@ PRINT_FORMAT: Text = "{} ||\tSize (number of parameters): {}\t|\tTrain acc: {}\t
 LOGGER_NAME: Text = "exp_runner"
 
 
+def get_exp_str_from_param(param: Union[int, float, Text, Dict]) -> Text:
+    if (
+        isinstance(param, int)
+        or isinstance(param, float)
+        or isinstance(param, str)
+    ):
+        return str(param)
+    if isinstance(param, dict):
+        return str(param).replace(" ", "").replace(":", "_")
+
+    raise ValueError("param must be str or dict: {}".format(param))
+
+
 def evaluate_model(
     model_path: Text,
     dataset_name: Text,
@@ -193,9 +206,10 @@ def run_craig_experiments(
     finetuning_train_config: train_config_utils.TrainConfig = exp_config.finetuning_train_config
 
     # Experiment parameters.
-    prune_layer_params: OrderedDict = OrderedDict(
-        exp_config.prune_params[prune_config_utils.KEY_LAYER_PARAMS]
-    )
+    # prune_layer_params: OrderedDict = OrderedDict(
+    prune_layer_params: Dict = exp_config.prune_params[
+        prune_config_utils.KEY_LAYER_PARAMS
+    ]
     prune_param_values: List = []
     layer_name_map: List[Text] = []
     param_name_map: List[Text] = []
@@ -221,7 +235,7 @@ def run_craig_experiments(
 
         exp_name_temp_list = []
         for e_layer_name, e_layer in exp_layer_params.items():
-            e_params = [str(e_p) for e_p in e_layer.values()]
+            e_params = [get_exp_str_from_param(e_p) for e_p in e_layer.values()]
             exp_name_temp_list.append(
                 "{}-{}".format(e_layer_name, "_".join(e_params))
             )

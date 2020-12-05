@@ -4,7 +4,7 @@ This is a utils file for reading of experiment config JSON files.
 
 from typing import Dict, List, Text, Tuple, Union
 
-from collections import OrderedDict
+# from collections import OrderedDict
 
 from . import train_config_utils
 
@@ -14,7 +14,7 @@ class ExpConfig:
     Wrapper for easy access of config fields
     """
 
-    _raw_dict: OrderedDict
+    _raw_dict: Dict
     config_id: Text
     prune_type: Text
     prune_params: Dict
@@ -47,9 +47,10 @@ def get_config_from_file(config_file_loc: Text) -> ExpConfig:
 
     config: ExpConfig
     with open(config_file_loc, "r") as config_file:
-        config_dict: Dict = json.load(
-            config_file, object_pairs_hook=OrderedDict
-        )
+        # config_dict: Dict = json.load(
+        #     config_file, object_pairs_hook=OrderedDict
+        # )
+        config_dict: Dict = json.load(config_file)
         config = ExpConfig(config_dict)
     return config
 

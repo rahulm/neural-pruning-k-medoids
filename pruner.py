@@ -80,18 +80,55 @@ class SimilarityMetrics:
         return np.max(dists) - dists
 
     @staticmethod
-    def rbf_kernel(layer, **kwargs):
+    def rbf_kernel(layer, gamma=None, **kwargs):
         """
         Calculates the similarity based on the Radial Basis Function (RBF).
+        In gamma, "f" stands for "# of features".
         """
         layer_weights = SimilarityMetrics.torch_layer_to_numpy_weights(layer)
-        return sklearn.metrics.pairwise.rbf_kernel(layer_weights, layer_weights)
+
+        gamma_val: Optional[float] = None
+        if gamma is None:
+            gamma_val = None
+        elif isinstance(gamma, int) or isinstance(gamma, float):
+            gamma_val = float(gamma)
+        elif isinstance(gamma, str):
+            num_features: float = float(layer_weights.shape[1])
+            if gamma == "f":
+                gamma_val = float(num_features)
+            elif gamma == "sqrt(f)":
+                gamma_val = float(np.sqrt(num_features))
+            elif gamma == "sqrt(f)^-1":
+                gamma_val = float(1 / np.sqrt(num_features))
+            elif gamma == "sqrt(f^-1)":
+                gamma_val = float(np.sqrt(1 / num_features))
+            elif gamma == "e^(-f)":
+                gamma_val = float(np.exp(-num_features))
+            elif gamma == "e^(f^-1)":
+                gamma_val = float(np.exp(1 / num_features))
+            elif gamma == "e^(-f^-1)":
+                gamma_val = float(np.exp(-1 / num_features))
+            elif gamma == "f^-1":  # This is the default for gamma=None.
+                gamma_val = float(1 / num_features)
+            elif gamma.lower() == "none":
+                gamma_val = None
+            else:
+                try:
+                    gamma_val = float(gamma)
+                except:
+                    raise ValueError("gamma is not valid: {}".format(gamma))
+        else:
+            raise ValueError("gamma is not valid: {}".format(gamma))
+
+        return sklearn.metrics.pairwise.rbf_kernel(
+            layer_weights, Y=layer_weights, gamma=gamma_val
+        )
 
 
 def prune_fc_layer_with_craig(
     curr_layer: nn.Linear,
     prune_percent_per_layer: float,
-    similarity_metric: Text = "",
+    similarity_metric: Union[Text, Dict] = "",
     prune_type: Text = "craig",
     **kwargs
 ) -> Tuple[List[int], List[float]]:
@@ -123,9 +160,15 @@ def prune_fc_layer_with_craig(
         subset_nodes = random.sample(original_nodes, target_num_nodes)
         subset_weights = [1 for _ in subset_nodes]
     else:  # Assumes similarity_metric is set correctly.
-        similarity_matrix = getattr(SimilarityMetrics, similarity_metric)(
-            curr_layer
-        )
+        similarity_matrix: Any
+        if isinstance(similarity_metric, dict):
+            similarity_matrix = getattr(
+                SimilarityMetrics, similarity_metric["name"]
+            )(layer=curr_layer, **similarity_metric)
+        else:
+            similarity_matrix = getattr(SimilarityMetrics, similarity_metric)(
+                layer=curr_layer
+            )
         facility_location: craig.FacilityLocation = craig.FacilityLocation(
             D=similarity_matrix, V=original_nodes
         )
@@ -156,7 +199,7 @@ def prune_fc_layer_with_craig(
 def prune_conv2d_layer_with_craig(
     curr_layer: nn.Conv2d,
     prune_percent_per_layer: float,
-    similarity_metric: Text = "",
+    similarity_metric: Union[Text, Dict] = "",
     prune_type: Text = "craig",
     **kwargs
 ) -> Tuple[List[int], List[float]]:
@@ -188,9 +231,15 @@ def prune_conv2d_layer_with_craig(
         subset_nodes = random.sample(original_nodes, target_num_nodes)
         subset_weights = [1 for _ in subset_nodes]
     else:  # Assumes similarity_metric is set correctly.
-        similarity_matrix = getattr(SimilarityMetrics, similarity_metric)(
-            curr_layer
-        )
+        similarity_matrix: Any
+        if isinstance(similarity_metric, dict):
+            similarity_matrix = getattr(
+                SimilarityMetrics, similarity_metric["name"]
+            )(layer=curr_layer, **similarity_metric)
+        else:
+            similarity_matrix = getattr(SimilarityMetrics, similarity_metric)(
+                layer=curr_layer
+            )
         facility_location: craig.FacilityLocation = craig.FacilityLocation(
             D=similarity_matrix, V=original_nodes
         )
