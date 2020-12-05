@@ -108,6 +108,8 @@ class SimilarityMetrics:
                 gamma_val = float(np.exp(1 / num_features))
             elif gamma == "e^(-f^-1)":
                 gamma_val = float(np.exp(-1 / num_features))
+            elif gamma == "f^-2":
+                gamma_val = float(1 / (num_features ** 2))
             elif gamma == "f^-1":  # This is the default for gamma=None.
                 gamma_val = float(1 / num_features)
             elif gamma.lower() == "none":
