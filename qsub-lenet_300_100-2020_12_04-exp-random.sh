@@ -14,7 +14,7 @@
 # Notify when
 #$ -m bea
 # Job task array
-#$ -t 1-9:1
+#$ -t 1-17:1
 
 # echo job info on joblog:
 echo "Job $JOB_ID.$SGE_TASK_ID started on:   " `hostname -s`
