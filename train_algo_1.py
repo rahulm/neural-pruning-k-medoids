@@ -20,7 +20,7 @@ from utils import (
     train_utils,
 )
 
-FILE_NAME_FORMAT_CHECKPOINT_MODEL: Text = "checkpoint-epoch_{}-model.pth"
+FILE_NAME_FORMAT_CHECKPOINT_MODEL: Text = "checkpoint-epoch_{}-model.pt"
 FOLDER_NAME_CHECKPOINTS: Text = "checkpoints"
 BEST_CHECKPOINT_EPOCH_TEXT: Text = "best"
 

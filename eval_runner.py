@@ -59,7 +59,7 @@ def run_evals(experiment_name: Text, epochs_list: List[int]) -> None:
                     exp_name,
                     "finetuning",
                     "checkpoints",
-                    "checkpoint-epoch_{}-model.pth".format(epoch),
+                    "checkpoint-epoch_{}-model.pt".format(epoch),
                 )
                 size, train_acc, test_acc = evaluate_model(
                     model_path=model_path
