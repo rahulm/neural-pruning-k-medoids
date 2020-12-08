@@ -2,11 +2,11 @@
 This is a utils file for reading of experiment config JSON files.
 """
 
-from typing import Dict, List, Text, Tuple, Union
-
-# from collections import OrderedDict
+from typing import Dict, List, Sequence, Text, Tuple, Union
 
 from . import train_config_utils
+
+# from collections import OrderedDict
 
 
 class ExpConfig:
@@ -17,6 +17,7 @@ class ExpConfig:
     _raw_dict: Dict
     config_id: Text
     prune_type: Text
+    model_input_shape: Sequence
     prune_params: Dict
     finetuning_train_config: train_config_utils.TrainConfig
     evaluation_dataset_name: Text

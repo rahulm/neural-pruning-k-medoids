@@ -2,7 +2,7 @@
 This is a utils file for reading of pruning config JSON files.
 """
 
-from typing import Dict, Text, Tuple
+from typing import Dict, Sequence, Text, Tuple
 
 from . import model_config_utils
 
@@ -23,6 +23,7 @@ class PruneConfig:
     config_id: Text
     model_config: model_config_utils.ModelConfig
     prune_type: Text
+    model_input_shape: Sequence
     prune_params: Dict
     original_model_path: Text
     pruned_model_out_folder: Text
