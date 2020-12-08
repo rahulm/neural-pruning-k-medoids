@@ -313,6 +313,7 @@ def run_single_data_point(
         .unsqueeze(0)
     )
     with torch.no_grad():
+        model.eval()
         model = model.cpu()
         model(input_data)
 
@@ -548,6 +549,7 @@ def prune_network(
 
     with torch.no_grad():
         # Perform pruning.
+        model.eval()
         logger.info(
             "Starting pruning for prune_type: {}".format(
                 prune_config.prune_type
