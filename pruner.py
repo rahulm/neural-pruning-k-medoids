@@ -30,6 +30,7 @@ from utils import (
     logging_utils,
     model_config_utils,
     prune_config_utils,
+    train_utils,
 )
 
 LOGGER_NAME: Text = "pruner"
@@ -195,24 +196,6 @@ def get_layer_craig_subset(
 
     return subset_nodes, subset_weights
 
-    # # Remove nodes+weights+biases, and adjust weights.
-    # num_nodes: int = len(subset_nodes)
-
-    # # Prune current layer.
-    # # Multiply weights (and biases?) by subset_weights.
-    # subset_weights_tensor = torch.tensor(subset_weights)
-    # curr_layer.weight = nn.Parameter(
-    #     curr_layer.weight[subset_nodes]
-    #     * subset_weights_tensor.reshape((num_nodes, 1, 1, 1))
-    # )
-    # if curr_layer.bias is not None:
-    #     curr_layer.bias = nn.Parameter(
-    #         curr_layer.bias[subset_nodes] * subset_weights_tensor
-    #     )
-    # curr_layer.out_channels = num_nodes
-
-    # return subset_nodes, subset_weights
-
 
 def prune_fc_layer_with_craig(
     layer: nn.Linear,
@@ -292,7 +275,7 @@ def prune_conv2d_layer_with_craig(
     return subset_nodes, subset_weights
 
 
-LAYER_TYPE_MAP: Dict[Type[nn.Module], Text] = {
+LAYER_NAME_MAP: Dict[Type[nn.Module], Text] = {
     nn.Linear: prune_config_utils.KEY_LAYER_LINEAR,
     nn.Conv2d: prune_config_utils.KEY_LAYER_CONV2D,
     nn.BatchNorm2d: prune_config_utils.KEY_LAYER_BATCHNORM2D,
@@ -303,13 +286,35 @@ LAYER_TYPE_MAP: Dict[Type[nn.Module], Text] = {
     nn.Flatten: "flatten",
 }
 
-CRAIG_LAYER_FUNCTION_MAP: Dict[
+OLD_CRAIG_LAYER_FUNCTION_MAP: Dict[
     Text, Callable[..., Tuple[List[int], List[float]]]
 ] = {
     prune_config_utils.KEY_LAYER_LINEAR: prune_fc_layer_with_craig,
     prune_config_utils.KEY_LAYER_CONV2D: prune_conv2d_layer_with_craig,
-    # prune_config_utils.KEY_LAYER_BATCHNORM2D: None,
 }
+
+CRAIG_LAYER_FUNCTION_MAP: Dict[
+    Type[nn.Module], Callable[..., Tuple[List[int], List[float]]]
+] = {
+    nn.Linear: prune_fc_layer_with_craig,
+    nn.Conv2d: prune_conv2d_layer_with_craig,
+}
+
+
+def run_single_data_point(
+    model: nn.Module, model_input_shape: Sequence, data_transform_name: Text
+):
+    input_data = (
+        train_utils.DATASET_TRANSFORMS[data_transform_name](
+            np.ones(model_input_shape)
+        )
+        .cpu()
+        .float()
+        .unsqueeze(0)
+    )
+    with torch.no_grad():
+        model = model.cpu()
+        model(input_data)
 
 
 def prune_network_with_craig(
@@ -326,170 +331,132 @@ def prune_network_with_craig(
     ]
 
     # Get list of model layers/parameters.
-    # Has backward compat for a previous model version.
-    model_prunable_parameters: Any  # This should be an iterable
-    if hasattr(model, "prunable_parameters_ordered"):
-        model_prunable_parameters = model.prunable_parameters_ordered
-    else:
-        model_prunable_parameters = model.sequential_module
-    num_prunable_parameters: int = len(model_prunable_parameters)
-    output_layer_index: int = num_prunable_parameters - 1
+    model_layers: List[nn.Module] = model.ordered_unpacking
+    num_layers: int = len(model_layers)
+    output_layer_index: int = num_layers - 1
+    model_data_shapes: List = [[] for _ in model_layers]
 
-    # TODO: Set up data_shape based on model_input_shape.
-    # TODO: Initially, assume flatten is applied if first layer is linear.
-    # NOTE: For now, assume no fancy non-nn functions in forward pass.
+    # Use model input shape to get data output shape for each layer.
+    def layer_shape_hook(layer_ind):
+        def inner(self, input, output):
+            # Discard the batch size.
+            model_data_shapes[layer_ind] = output.data.shape[1:]
+
+        return inner
+
+    model_hooks = []
+    for layer_ind, layer in enumerate(model_layers):
+        model_hooks.append(
+            layer.register_forward_hook(layer_shape_hook(layer_ind))
+        )
+    run_single_data_point(
+        model=model,
+        model_input_shape=prune_config.model_input_shape,
+        data_transform_name=prune_config.data_transform_name,
+    )
+    for mhook in model_hooks:
+        mhook.remove()
 
     curr_layer_i: int = 0
     while curr_layer_i < output_layer_index:
-        # Iterate thru and prune layers, excluding the last (output) layer.
+        # Iterate through layers, prune as necessary.
+        curr_layer: nn.Module = model_layers[curr_layer_i]
+        curr_layer_type: Type[nn.Module] = type(curr_layer)
+        curr_layer_name: Text
+        curr_layer_prune_func: Callable[..., Tuple[List[int], List[float]]]
 
-        # Set up the current layer.
-        curr_layer: nn.Module = model_prunable_parameters[curr_layer_i]
-        should_skip_layer: bool = False
-
-        # Get the layer type.
-        curr_layer_type: Optional[Text] = LAYER_TYPE_MAP.get(
-            type(curr_layer), None
-        )
-        if not curr_layer_type:
-            # Skip unknown layer.
-            logger.warn(
-                "Encountered unknown layer type: {}".format(type(curr_layer))
-            )
-            should_skip_layer = True
-
-        if (curr_layer_type not in CRAIG_LAYER_FUNCTION_MAP) or (
-            curr_layer_type not in layer_params
+        if (curr_layer_type in CRAIG_LAYER_FUNCTION_MAP) and (
+            LAYER_NAME_MAP[curr_layer_type] in layer_params
         ):
-            # If the curr_layer is not prunable, or not configured, skip.
-            should_skip_layer = True
-
-        if should_skip_layer:
-            # Skip layer if needed.
-            # TODO: Update data_shape based on layer output.
+            # If the current layer is prunable and is set up in the PruneConfig, then we can prune.
+            curr_layer_name = LAYER_NAME_MAP[curr_layer_type]
+            curr_layer_prune_func = CRAIG_LAYER_FUNCTION_MAP[curr_layer_type]
+        else:
+            # Otherwise, skip this layer.
             curr_layer_i += 1
             continue
 
-        # Otherwise, curr_layer is prunable, so prune.
+        # Prune the current layer.
         subset_nodes: List[int]
         subset_weights: List[float]
-        subset_nodes, subset_weights = CRAIG_LAYER_FUNCTION_MAP[
-            curr_layer_type
-        ](layer=curr_layer, **(layer_params[curr_layer_type]))
+        subset_nodes, subset_weights = curr_layer_prune_func(
+            layer=curr_layer, **(layer_params[curr_layer_name])
+        )
+        subset_len: int = len(subset_nodes)
 
-        # Now, find the next layer to prune the corresponding "in" features/weights.
-
-        # Save current layer output shape (or required values) for future use.
-        # NOTE: Maybe add an input_shape config parameter to calculate output size?
-        previous_shape: Sequence[int]
-        previous_shape_is_constant: bool
-        if curr_layer_type == prune_config_utils.KEY_LAYER_LINEAR:
-            previous_shape = [curr_layer.out_features]
-            previous_shape_is_constant = True
-        elif curr_layer_type == prune_config_utils.KEY_LAYER_CONV2D:
-            previous_shape = [curr_layer.out_channels]
-            previous_shape_is_constant = False
-
-        # Find the next prunable layer to update weights.
         next_layer_i: int = curr_layer_i + 1
-        while next_layer_i < num_prunable_parameters:
-            next_layer: nn.Module = model_prunable_parameters[next_layer_i]
-            next_layer_type: Optional[Text] = LAYER_TYPE_MAP.get(
-                type(next_layer), None
-            )
-            if not next_layer_type:
-                # Skip unknown layer.
-                logger.warn(
-                    "Encountered unknown layer type: {}".format(
-                        type(curr_layer)
-                    )
-                )
+        while next_layer_i < num_layers:
+            # Find the next prunable layer and update the weights accordingly.
+            next_layer: nn.Module = model_layers[next_layer_i]
+            next_layer_type: Type[nn.Module] = type(next_layer)
+
+            if next_layer_type not in CRAIG_LAYER_FUNCTION_MAP:
+                # If this layer is not prunable, skip.
                 next_layer_i += 1
                 continue
 
-            # If next_layer is prunable, then remove unused nodes.
-            if next_layer_type in CRAIG_LAYER_FUNCTION_MAP:
-                if isinstance(next_layer, nn.Linear):
-                    if (not previous_shape_is_constant) or (not previous_shape):
-                        raise ValueError(
-                            "Shape of inputs must be constant for FC layer: {}".format(
-                                next_layer
+            if isinstance(next_layer, nn.Conv2d):
+                # Change conv in channels to match the pruned subset.
+                next_layer.weight = nn.Parameter(
+                    next_layer.weight[:, subset_nodes]
+                )
+                next_layer.in_channels = subset_len
+                next_layer._in_channels = (
+                    subset_len  # Not sure if this is necessary.
+                )
+            elif isinstance(next_layer, nn.Linear):
+                # Assuming a pre-Linear flatten op, need to find the weights
+                # that correspond to the channels that were kept in the pruning
+                # of the previous layer.
+                num_weights_per_channel: int
+
+                if isinstance(curr_layer, nn.Conv2d):
+                    # If the initially pruned layer was a conv, then re-iterate
+                    # from curr_layer to next_layer, searching for the last
+                    # conv/pooling/relu/etc before a flatten-esque operation.
+                    for temp_i in range(curr_layer_i, next_layer_i):
+                        if len(model_data_shapes[temp_i]) != 3:
+                            break
+                        num_weights_per_channel = int(
+                            np.prod(model_data_shapes[temp_i][1:])
+                        )
+                else:
+                    # Otherwise, the initially pruned layer must have been a
+                    # linear layer. In that case, we are currently assuming
+                    # that only other linear/relu/flatten/etc layers lie in
+                    # between. So, we can simply use the number of original
+                    # channels/features, which should be =1.
+                    num_weights_per_channel = int(
+                        np.prod(model_data_shapes[curr_layer_i][1:])
+                    )
+
+                weights_to_keep: List[int] = []
+                for si in subset_nodes:
+                    weights_to_keep.extend(
+                        list(
+                            range(
+                                num_weights_per_channel * si,
+                                num_weights_per_channel * (si + 1),
                             )
                         )
-
-                    # NOTE: Currently, only supporting CNNs with explicitly
-                    #       constant size inputs to each FC layer. May need to
-                    #       figure out how to support inputs that are
-                    #       implicitly constant, based on some model input size.
-
-                    # Assumes input uses torch.flatten conventions.
-                    # Keeps channels that were part of the subset_nodes.
-                    mapping_multiplier: int = int(
-                        np.prod(previous_shape[1:])
-                    )  # H*W, or 1
-                    mapped_nodes: List[int] = []
-                    for node in subset_nodes:
-                        map_base: int = node * mapping_multiplier
-                        for i in range(mapping_multiplier):
-                            mapped_nodes.append(map_base + i)
-
-                    num_nodes = len(mapped_nodes)
-                    next_layer.weight = nn.Parameter(
-                        next_layer.weight[:, mapped_nodes]
                     )
-                    next_layer.in_features = num_nodes
-                elif isinstance(next_layer, nn.Conv2d):
-                    # NOTE: Currently, only supporting conv layers followed by
-                    #       conv layers, since that is the most common. So,
-                    #       this assumes that the number of out_channels does
-                    #       not change over pooling layers, batchnorm,
-                    #       dropout, etc.
-                    #       Need to add support for linear (or other) layers
-                    #       followed by conv layers, where the number of
-                    #       channels changes.
-                    num_nodes = len(subset_nodes)
-                    next_layer.weight = nn.Parameter(
-                        next_layer.weight[:, subset_nodes]
+                next_layer.weight = nn.Parameter(
+                    next_layer.weight[:, weights_to_keep]
+                )
+
+                next_layer.in_features = len(weights_to_keep)
+            else:
+                logger.warn(
+                    "No pruning adjustment made to layer {} of type {}".format(
+                        next_layer_i, next_layer_type
                     )
-                    next_layer.in_channels = num_nodes
-                    next_layer._in_channels = (
-                        num_nodes  # Not sure if this is needed.
-                    )
-                else:
-                    raise TypeError(
-                        "Pruning of layer not supported: {}".format(
-                            type(next_layer)
-                        )
-                    )
-                break
+                )
 
-            # Otherwise, not prunable:
-            # - Update subset/previous_shape as needed.
-            # - Continue searching.
+            # Adjustments were attempted, now continue to the next layer for
+            # pruning.
+            break
 
-            # Update subset/previous_shape as needed.
-            # NOTE: Should not see any prunable layers here.
-            if next_layer_type == "adaptiveavgpool2d":
-                if not previous_shape:
-                    raise ValueError(
-                        "previous_shape must be non-empty before adaptiveavgpool2d, found: {}".format(
-                            previous_shape
-                        )
-                    )
-                next_shape: Sequence[int] = [
-                    previous_shape[0],
-                    next_layer.output_size[0],
-                    next_layer.output_size[1],
-                ]
-                previous_shape = next_shape
-
-                previous_shape_is_constant = True
-
-            # Continue searching.
-            # curr_layer_i = next_layer_i
-            next_layer_i += 1
-
-        # Update curr_layer_i pointer before continuing.
+        # Now that we have found the next prunable layer, we can jump to it.
         curr_layer_i = next_layer_i
 
 
