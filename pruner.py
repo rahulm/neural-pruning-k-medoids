@@ -2,6 +2,8 @@
 
 import json
 import os
+import random
+from datetime import datetime
 from typing import (
     Any,
     Callable,
@@ -20,11 +22,18 @@ import numpy as np
 import sklearn.metrics
 import torch
 from torch import nn
-import random
 
 import craig
 from mussay_neural_pruning import coreset
-from utils import general_config_utils, model_config_utils, prune_config_utils
+from utils import (
+    general_config_utils,
+    logging_utils,
+    model_config_utils,
+    prune_config_utils,
+)
+
+LOGGER_NAME: Text = "pruner"
+FILE_NAME_FORMAT_LOG: Text = "log-{}.txt"
 
 FILE_NAME_MODEL: Text = "pruned_model.pth"
 FILE_NAME_WEIGHT_ONLY: Text = "pruned_weight_only.pth"
@@ -134,6 +143,8 @@ def prune_fc_layer_with_craig(
     prune_type: Text = "craig",
     **kwargs
 ) -> Tuple[List[int], List[float]]:
+    logger = logging_utils.get_logger(LOGGER_NAME)
+
     assert (0 <= prune_percent_per_layer) and (
         prune_percent_per_layer <= 1
     ), "prune_percent_per_layer ({}) must be within [0,1]".format(
@@ -150,7 +161,6 @@ def prune_fc_layer_with_craig(
     ), "similarity_metric must be set for prune_type '{}'".format(prune_type)
 
     original_num_nodes: int = curr_layer.out_features
-    original_nodes = list(range(original_num_nodes))
     target_num_nodes: int = int(
         (1 - prune_percent_per_layer) * original_num_nodes
     )
@@ -159,7 +169,9 @@ def prune_fc_layer_with_craig(
     subset_weights: List
 
     if prune_type == "random":
-        subset_nodes = random.sample(original_nodes, target_num_nodes)
+        subset_nodes = random.sample(
+            list(range(original_num_nodes)), target_num_nodes
+        )
         subset_weights = [1 for _ in subset_nodes]
     else:  # Assumes similarity_metric is set correctly.
         similarity_matrix: Any
@@ -171,13 +183,15 @@ def prune_fc_layer_with_craig(
             similarity_matrix = getattr(SimilarityMetrics, similarity_metric)(
                 layer=curr_layer
             )
-        facility_location: craig.FacilityLocation = craig.FacilityLocation(
-            D=similarity_matrix, V=original_nodes
-        )
 
-        subset_nodes, subset_weights = craig.lazy_greedy_heap(
-            F=facility_location, V=original_nodes, B=target_num_nodes
+        (
+            subset_nodes,
+            subset_weights,
+            craig_time,
+        ) = craig.get_craig_subset_and_weights(
+            similarity_matrix=similarity_matrix, target_size=target_num_nodes
         )
+        logger.info("craig runtime (s): {}".format(craig_time))
 
     # Remove nodes+weights+biases, and adjust weights.
     num_nodes: int = len(subset_nodes)
@@ -205,6 +219,8 @@ def prune_conv2d_layer_with_craig(
     prune_type: Text = "craig",
     **kwargs
 ) -> Tuple[List[int], List[float]]:
+    logger = logging_utils.get_logger(LOGGER_NAME)
+
     assert (0 <= prune_percent_per_layer) and (
         prune_percent_per_layer <= 1
     ), "prune_percent_per_layer ({}) must be within [0,1]".format(
@@ -221,7 +237,6 @@ def prune_conv2d_layer_with_craig(
     ), "similarity_metric must be set for prune_type '{}'".format(prune_type)
 
     original_num_nodes: int = curr_layer.out_channels
-    original_nodes = list(range(original_num_nodes))
     target_num_nodes: int = int(
         (1 - prune_percent_per_layer) * original_num_nodes
     )
@@ -230,7 +245,9 @@ def prune_conv2d_layer_with_craig(
     subset_weights: List
 
     if prune_type == "random":
-        subset_nodes = random.sample(original_nodes, target_num_nodes)
+        subset_nodes = random.sample(
+            list(range(original_num_nodes)), target_num_nodes
+        )
         subset_weights = [1 for _ in subset_nodes]
     else:  # Assumes similarity_metric is set correctly.
         similarity_matrix: Any
@@ -242,13 +259,15 @@ def prune_conv2d_layer_with_craig(
             similarity_matrix = getattr(SimilarityMetrics, similarity_metric)(
                 layer=curr_layer
             )
-        facility_location: craig.FacilityLocation = craig.FacilityLocation(
-            D=similarity_matrix, V=original_nodes
-        )
 
-        subset_nodes, subset_weights = craig.lazy_greedy_heap(
-            F=facility_location, V=original_nodes, B=target_num_nodes
+        (
+            subset_nodes,
+            subset_weights,
+            craig_time,
+        ) = craig.get_craig_subset_and_weights(
+            similarity_matrix=similarity_matrix, target_size=target_num_nodes
         )
+        logger.info("craig runtime (s): {}".format(craig_time))
 
     # Remove nodes+weights+biases, and adjust weights.
     num_nodes: int = len(subset_nodes)
@@ -277,6 +296,7 @@ LAYER_TYPE_MAP: Dict[Type[nn.Module], Text] = {
     nn.AdaptiveAvgPool2d: "adaptiveavgpool2d",
     nn.MaxPool2d: "maxpool2d",
     nn.Dropout: "dropout",
+    nn.Flatten: "flatten",
 }
 
 CRAIG_LAYER_FUNCTION_MAP: Dict[
@@ -311,6 +331,7 @@ def prune_network_with_craig(
             can find the subset of channels that were not pruned, and only
             keep the corresponding weights in the fc network.
     """
+    logger = logging_utils.get_logger(LOGGER_NAME)
 
     prune_params: Dict = prune_config.prune_params
     layer_params: Dict = prune_params[prune_config_utils.KEY_LAYER_PARAMS]
@@ -327,7 +348,16 @@ def prune_network_with_craig(
 
     while curr_layer_i < output_layer_index:
         curr_layer: nn.Module = model_prunable_parameters[curr_layer_i]
-        curr_layer_type: Text = LAYER_TYPE_MAP[type(curr_layer)]
+        curr_layer_type: Optional[Text] = LAYER_TYPE_MAP.get(
+            type(curr_layer), None
+        )
+        if not curr_layer_type:
+            # Skip unknown layer.
+            logger.warn(
+                "Encountered unknown layer type: {}".format(type(curr_layer))
+            )
+            curr_layer_i += 1
+            continue
 
         if (curr_layer_type not in CRAIG_LAYER_FUNCTION_MAP) or (
             curr_layer_type not in layer_params
@@ -358,7 +388,18 @@ def prune_network_with_craig(
         next_layer_i: int = curr_layer_i + 1
         while next_layer_i < num_prunable_parameters:
             next_layer: nn.Module = model_prunable_parameters[next_layer_i]
-            next_layer_type: Text = LAYER_TYPE_MAP[type(next_layer)]
+            next_layer_type: Optional[Text] = LAYER_TYPE_MAP.get(
+                type(next_layer), None
+            )
+            if not next_layer_type:
+                # Skip unknown layer.
+                logger.warn(
+                    "Encountered unknown layer type: {}".format(
+                        type(curr_layer)
+                    )
+                )
+                next_layer_i += 1
+                continue
 
             # If next_layer is prunable, then remove unused nodes.
             if next_layer_type in CRAIG_LAYER_FUNCTION_MAP:
@@ -510,6 +551,7 @@ def prune_network(
     Can provide a model_checkpoint_path to override any model checkpoint path
     specified in prune_config. 
     """
+    logger = logging_utils.get_logger(LOGGER_NAME)
 
     if not os.path.exists(pruned_output_folder):
         os.makedirs(pruned_output_folder)
@@ -526,11 +568,17 @@ def prune_network(
         prune_config.original_model_path = model_checkpoint_path
     else:
         model_path = prune_config.original_model_path
+    logger.info("Loading model checkpoint from: {}".format(model_path))
     load_location = torch.device("cpu")  # Can make this None, as default
     model = torch.load(model_path, map_location=load_location)
 
     with torch.no_grad():
         # Perform pruning.
+        logger.info(
+            "Starting pruning for prune_type: {}".format(
+                prune_config.prune_type
+            )
+        )
         if prune_config.prune_type == "craig":
             model.to(torch.device("cpu"))
             prune_network_with_craig(
@@ -556,7 +604,8 @@ def prune_network(
     )
     torch.save(model, out_model_path)
     # torch.save(model.state_dict(), out_weights_path)
-    print(model)
+    logger.info("Pruning complete")
+    logger.info(model)
 
     # Save new model config.
     model_architecture = model.ARCHITECTURE_NAME
@@ -603,12 +652,18 @@ def prune_network(
         }
     else:
         # Not supported.
+        logger.info(
+            "Model architecture config not supported: {}".format(
+                model_architecture
+            )
+        )
         return
     out_model_config_path: Text = os.path.join(
         pruned_output_folder, FILE_NAME_MODEL_CONFIG
     )
     with open(out_model_config_path, "w") as out_model_config_file:
         json.dump(out_model_config, out_model_config_file)
+    logger.info("Wrote model config to: {}".format(out_model_config_path))
 
 
 ### CLI
@@ -652,15 +707,23 @@ def get_args():
 
 def main() -> None:
     args = get_args()
-    print(args)
 
     config: prune_config_utils.PruneConfig = prune_config_utils.get_config_from_file(
         args.config
     )
-
     pruned_output_folder: Text = (
         args.out_folder if args.out_folder else config.pruned_model_out_folder
     )
+
+    # Logging
+    datetime_string: Text = datetime.now().strftime("%Y_%m_%d-%H_%M_%S")
+    logging_utils.setup_logging(
+        log_file_loc=os.path.join(
+            pruned_output_folder, FILE_NAME_FORMAT_LOG.format(datetime_string),
+        )
+    )
+    logger = logging_utils.get_logger(LOGGER_NAME)
+    logger.info(args)
 
     prune_network(
         prune_config=config,
