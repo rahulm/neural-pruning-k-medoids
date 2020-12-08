@@ -30,6 +30,7 @@ def setup_logging(log_file_loc: Optional[Text] = None, file_mode="a") -> None:
     logging.basicConfig(
         handlers=[handler_log_file, handler_stdout, handler_stderr],
         format="{levelname:<8}{asctime}  {name:>30}:{lineno:<4}  {message}",
+        datefmt="%m/%d/%Y %I:%M:%S %p",
         style="{",
         level="NOTSET",
     )
