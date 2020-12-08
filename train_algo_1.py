@@ -6,7 +6,7 @@ It may be good to rename this to something more informative.
 import importlib
 import os
 from datetime import datetime
-from typing import Dict, List, Text, Union
+from typing import Any, Dict, List, Optional, Text, Union
 
 import torch
 import torch.nn.functional as F
@@ -21,29 +21,66 @@ from utils import (
 )
 
 FILE_NAME_FORMAT_CHECKPOINT_MODEL: Text = "checkpoint-epoch_{}-model.pt"
+FILE_NAME_FORMAT_CHECKPOINT_STATE_DICT: Text = "checkpoint-epoch_{}-state_dict.pt"
 FOLDER_NAME_CHECKPOINTS: Text = "checkpoints"
 BEST_CHECKPOINT_EPOCH_TEXT: Text = "best"
 
 
-def save_model_checkpoint(
+def save_model_and_state_dict_checkpoint(
     model: torch.nn.Module,
     checkpoints_folder_path: Text,
     epoch: Union[int, Text],
+    checkpoint_name: Optional[Text] = None,
+    model_config: Optional[model_config_utils.ModelConfig] = None,
+    optimizer=None,
+    scheduler=None,
+    **kwargs
 ) -> None:
+    if not checkpoint_name:
+        checkpoint_name = str(epoch)
+
     torch.save(
         model,
         os.path.join(
             checkpoints_folder_path,
-            FILE_NAME_FORMAT_CHECKPOINT_MODEL.format(epoch),
+            FILE_NAME_FORMAT_CHECKPOINT_MODEL.format(checkpoint_name),
         ),
     )
-    # torch.save(
-    #     model.state_dict(),
-    #     os.path.join(
-    #         checkpoints_folder_path,
-    #         "checkpoint-epoch_{}-weight_only.pth".format(epoch),
-    #     ),
-    # )
+
+    state_dict = {
+        "model_state_dict": model.state_dict(),
+        "epoch": epoch,
+        "checkpoint_name": checkpoint_name,
+    }
+    if model_config:
+        state_dict["model_config"] = model_config._raw_dict
+    if optimizer:
+        state_dict["optimizer_state_dict"] = optimizer.state_dict()
+    if scheduler:
+        state_dict["scheduler_state_dict"] = scheduler.state_dict()
+    state_dict.update(kwargs)
+
+    torch.save(
+        state_dict,
+        os.path.join(
+            checkpoints_folder_path,
+            FILE_NAME_FORMAT_CHECKPOINT_STATE_DICT.format(checkpoint_name),
+        ),
+    )
+
+
+# def save_model_checkpoint(
+#     model: torch.nn.Module,
+#     checkpoints_folder_path: Text,
+#     epoch: Union[int, Text],
+# ) -> None:
+#     torch.save(
+#         model,
+#         os.path.join(
+#             checkpoints_folder_path,
+#             FILE_NAME_FORMAT_CHECKPOINT_MODEL.format(epoch),
+#         ),
+#     )
 
 
 def train(
@@ -104,6 +141,7 @@ def train_model_with_configs(
     model_config_or_checkpoint: Union[model_config_utils.ModelConfig, Text],
     train_config: train_config_utils.TrainConfig,
     experiment_folder_path: Text,
+    resume_training: bool = False,
     save_interval: int = 1,
     save_best_checkpoint: bool = True,
     use_gpu: bool = True,
@@ -223,9 +261,13 @@ def train_model_with_configs(
     )
 
     # Load model.
+    model_config: Optional[model_config_utils.ModelConfig] = None
+    optimizer_state_dict: Optional[Any] = None
+    scheduler_state_dict: Optional[Any] = None
+    resume_epoch: Optional[int] = None
     model: torch.nn.Module
     if isinstance(model_config_or_checkpoint, model_config_utils.ModelConfig):
-        model_config: model_config_utils.ModelConfig = model_config_or_checkpoint
+        model_config = model_config_or_checkpoint
         model_py_module = importlib.import_module(
             "models.{}".format(model_config.model_architecture)
         )
@@ -233,7 +275,26 @@ def train_model_with_configs(
         model = Model(**model_config.model_params)
     elif isinstance(model_config_or_checkpoint, Text):
         model_checkpoint_path: Text = model_config_or_checkpoint
-        model = torch.load(model_checkpoint_path, map_location=torch_device)
+        loaded = torch.load(model_checkpoint_path, map_location=torch_device)
+        if isinstance(loaded, torch.nn.Module):
+            # Model.
+            model = loaded
+        else:
+            # State dict.
+            model_config = model_config_utils.ModelConfig(
+                loaded["model_config"]
+            )
+            model_py_module = importlib.import_module(
+                "models.{}".format(model_config.model_architecture)
+            )
+            Model = model_py_module.Model  # type: ignore
+            model = Model(**model_config.model_params)
+            model.load_state_dict(loaded["model_state_dict"])
+            if resume_training:
+                optimizer_state_dict = loaded.get("optimizer_state_dict", None)
+                scheduler_state_dict = loaded.get("scheduler_state_dict", None)
+                resume_epoch = loaded.get("epoch", None)
+
     else:
         err_msg: Text = "Model config or path to model checkpoint must be provided."
         logger.error(err_msg)
@@ -248,10 +309,20 @@ def train_model_with_configs(
         momentum=train_config.momentum,
         weight_decay=train_config.weight_decay,
     )
+    if optimizer_state_dict:
+        optimizer.load_state_dict(optimizer_state_dict)
     # optimizer = torch.optim.Adadelta(model.parameters(), lr=learning_rate)
+
     scheduler = torch.optim.lr_scheduler.StepLR(
         optimizer, step_size=train_config.lr_step_size, gamma=train_config.gamma
     )
+    if scheduler_state_dict:
+        scheduler.load_state_dict(scheduler_state_dict)
+
+    # Set up first epoch, if need to resume.
+    first_epoch: int = 1
+    if resume_epoch:
+        first_epoch = resume_epoch
 
     try:
         # First, get initial train and test scores.
@@ -273,17 +344,20 @@ def train_model_with_configs(
 
         # Save initial model checkpoint.
         if save_checkpoint_per_epoch:
-            save_model_checkpoint(
+            save_model_and_state_dict_checkpoint(
                 model=model,
                 checkpoints_folder_path=checkpoints_folder_path,
                 epoch=0,
+                model_config=model_config,
+                optimizer=optimizer,
+                scheduler=scheduler,
             )
 
         # Track best test accuracy.
         best_test_acc: float = initial_test_acc
 
         # Train.
-        for epoch in range(1, train_config.num_epochs + 1):
+        for epoch in range(first_epoch, train_config.num_epochs + 1):
             train(
                 logger,
                 log_interval,
@@ -314,10 +388,14 @@ def train_model_with_configs(
             if test_acc > best_test_acc:
                 best_test_acc = test_acc
                 if save_best_checkpoint:
-                    save_model_checkpoint(
+                    save_model_and_state_dict_checkpoint(
                         model=model,
                         checkpoints_folder_path=checkpoints_folder_path,
-                        epoch=BEST_CHECKPOINT_EPOCH_TEXT,
+                        epoch=epoch,
+                        checkpoint_name=BEST_CHECKPOINT_EPOCH_TEXT,
+                        model_config=model_config,
+                        optimizer=optimizer,
+                        scheduler=scheduler,
                     )
 
             # Save incremental checkpoint, if needed.
@@ -326,10 +404,13 @@ def train_model_with_configs(
                 or (epoch == train_config.num_epochs)
                 or ((epoch % save_interval) == 0)
             ):
-                save_model_checkpoint(
+                save_model_and_state_dict_checkpoint(
                     model=model,
                     checkpoints_folder_path=checkpoints_folder_path,
                     epoch=epoch,
+                    model_config=model_config,
+                    optimizer=optimizer,
+                    scheduler=scheduler,
                 )
 
             # Incrementally save losses per epoch.
@@ -353,12 +434,20 @@ def get_args():
 
     parser = argparse.ArgumentParser(description="Evaluate model on dataset.")
 
-    parser.add_argument(
+    model_group = parser.add_mutually_exclusive_group(required=True)
+    model_group.add_argument(
         "-m",
         "--model_config",
         type=str,
-        required=True,
-        help="Path to model config JSON.",
+        default=None,
+        help="Path to model config JSON. Need this or --checkpoint.",
+    )
+    model_group.add_argument(
+        "-c",
+        "--checkpoint",
+        type=str,
+        default=None,
+        help="Path to model checkpoint to resume or finetune from. Need this or --model_config.",
     )
 
     parser.add_argument(
@@ -405,6 +494,14 @@ def get_args():
     )
 
     parser.add_argument(
+        "--resume",
+        action="store_true",
+        required=False,
+        default=False,
+        help="If state dict is given, resume training instead of starting finetuning.",
+    )
+
+    parser.add_argument(
         "--no-cuda",
         action="store_true",
         default=False,
@@ -431,18 +528,27 @@ def main() -> None:
     logger = logging_utils.get_logger(__name__)
     logger.info(args)
 
-    model_config: model_config_utils.ModelConfig = model_config_utils.get_config_from_file(
-        args.model_config
-    )
+    model_config_or_checkpoint: Union[model_config_utils.ModelConfig, Text]
+    if args.model_config:
+        model_config_or_checkpoint = model_config_utils.get_config_from_file(
+            args.model_config
+        )
+    elif args.checkpoint:
+        model_config_or_checkpoint = args.checkpoint
+    else:
+        err_msg = "Either --model_config or --checkpoint must be provided."
+        logger.error(err_msg)
+        raise ValueError(err_msg)
 
     train_config: train_config_utils.TrainConfig = train_config_utils.get_config_from_file(
         args.train_config
     )
 
     train_model_with_configs(
-        model_config_or_checkpoint=model_config,
+        model_config_or_checkpoint=model_config_or_checkpoint,
         train_config=train_config,
         experiment_folder_path=experiment_folder_path,
+        resume_training=args.resume_training,
         save_interval=args.save_interval,
         save_best_checkpoint=args.save_best_checkpoint,
         use_gpu=not args.no_cuda,
