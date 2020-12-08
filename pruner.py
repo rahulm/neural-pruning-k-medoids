@@ -136,8 +136,9 @@ class SimilarityMetrics:
         )
 
 
-def prune_fc_layer_with_craig(
-    curr_layer: nn.Linear,
+def get_layer_craig_subset(
+    layer: Union[nn.Linear, nn.Conv2d],
+    original_num_nodes: int,
     prune_percent_per_layer: float,
     similarity_metric: Union[Text, Dict] = "",
     prune_type: Text = "craig",
@@ -160,7 +161,6 @@ def prune_fc_layer_with_craig(
         similarity_metric
     ), "similarity_metric must be set for prune_type '{}'".format(prune_type)
 
-    original_num_nodes: int = curr_layer.out_features
     target_num_nodes: int = int(
         (1 - prune_percent_per_layer) * original_num_nodes
     )
@@ -178,10 +178,10 @@ def prune_fc_layer_with_craig(
         if isinstance(similarity_metric, dict):
             similarity_matrix = getattr(
                 SimilarityMetrics, similarity_metric["name"]
-            )(layer=curr_layer, **similarity_metric)
+            )(layer=layer, **similarity_metric)
         else:
             similarity_matrix = getattr(SimilarityMetrics, similarity_metric)(
-                layer=curr_layer
+                layer=layer
             )
 
         (
@@ -193,81 +193,85 @@ def prune_fc_layer_with_craig(
         )
         logger.info("craig runtime (s): {}".format(craig_time))
 
+    return subset_nodes, subset_weights
+
+    # # Remove nodes+weights+biases, and adjust weights.
+    # num_nodes: int = len(subset_nodes)
+
+    # # Prune current layer.
+    # # Multiply weights (and biases?) by subset_weights.
+    # subset_weights_tensor = torch.tensor(subset_weights)
+    # curr_layer.weight = nn.Parameter(
+    #     curr_layer.weight[subset_nodes]
+    #     * subset_weights_tensor.reshape((num_nodes, 1, 1, 1))
+    # )
+    # if curr_layer.bias is not None:
+    #     curr_layer.bias = nn.Parameter(
+    #         curr_layer.bias[subset_nodes] * subset_weights_tensor
+    #     )
+    # curr_layer.out_channels = num_nodes
+
+    # return subset_nodes, subset_weights
+
+
+def prune_fc_layer_with_craig(
+    layer: nn.Linear,
+    prune_percent_per_layer: float,
+    similarity_metric: Union[Text, Dict] = "",
+    prune_type: Text = "craig",
+    **kwargs
+) -> Tuple[List[int], List[float]]:
+
+    # Get CRAIG subset.
+    subset_nodes: List
+    subset_weights: List
+    subset_nodes, subset_weights = get_layer_craig_subset(
+        layer=layer,
+        original_num_nodes=layer.out_features,
+        prune_percent_per_layer=prune_percent_per_layer,
+        similarity_metric=similarity_metric,
+        prune_type=prune_type,
+        **kwargs
+    )
+
     # Remove nodes+weights+biases, and adjust weights.
     num_nodes: int = len(subset_nodes)
 
     # Prune current layer.
     # Multiply weights (and biases?) by subset_weights.
     subset_weights_tensor = torch.tensor(subset_weights)
-    curr_layer.weight = nn.Parameter(
-        curr_layer.weight[subset_nodes]
+    layer.weight = nn.Parameter(
+        layer.weight[subset_nodes]
         * subset_weights_tensor.reshape((num_nodes, 1))
     )
-    if curr_layer.bias is not None:
-        curr_layer.bias = nn.Parameter(
-            curr_layer.bias[subset_nodes] * subset_weights_tensor
+    if layer.bias is not None:
+        layer.bias = nn.Parameter(
+            layer.bias[subset_nodes] * subset_weights_tensor
         )
-    curr_layer.out_features = num_nodes
+    layer.out_features = num_nodes
 
     return subset_nodes, subset_weights
 
 
 def prune_conv2d_layer_with_craig(
-    curr_layer: nn.Conv2d,
+    layer: nn.Conv2d,
     prune_percent_per_layer: float,
     similarity_metric: Union[Text, Dict] = "",
     prune_type: Text = "craig",
     **kwargs
 ) -> Tuple[List[int], List[float]]:
-    logger = logging_utils.get_logger(LOGGER_NAME)
 
-    assert (0 <= prune_percent_per_layer) and (
-        prune_percent_per_layer <= 1
-    ), "prune_percent_per_layer ({}) must be within [0,1]".format(
-        prune_percent_per_layer
-    )
-
-    assert prune_type in (
-        "craig",
-        "random",
-    ), "prune_type must be 'craig' or 'random'"
-
-    assert (prune_type == "random") or (
-        similarity_metric
-    ), "similarity_metric must be set for prune_type '{}'".format(prune_type)
-
-    original_num_nodes: int = curr_layer.out_channels
-    target_num_nodes: int = int(
-        (1 - prune_percent_per_layer) * original_num_nodes
-    )
-
+    # Get CRAIG subset.
     subset_nodes: List
     subset_weights: List
-
-    if prune_type == "random":
-        subset_nodes = random.sample(
-            list(range(original_num_nodes)), target_num_nodes
-        )
-        subset_weights = [1 for _ in subset_nodes]
-    else:  # Assumes similarity_metric is set correctly.
-        similarity_matrix: Any
-        if isinstance(similarity_metric, dict):
-            similarity_matrix = getattr(
-                SimilarityMetrics, similarity_metric["name"]
-            )(layer=curr_layer, **similarity_metric)
-        else:
-            similarity_matrix = getattr(SimilarityMetrics, similarity_metric)(
-                layer=curr_layer
-            )
-
-        (
-            subset_nodes,
-            subset_weights,
-            craig_time,
-        ) = craig.get_craig_subset_and_weights(
-            similarity_matrix=similarity_matrix, target_size=target_num_nodes
-        )
-        logger.info("craig runtime (s): {}".format(craig_time))
+    subset_nodes, subset_weights = get_layer_craig_subset(
+        layer=layer,
+        original_num_nodes=layer.out_channels,
+        prune_percent_per_layer=prune_percent_per_layer,
+        similarity_metric=similarity_metric,
+        prune_type=prune_type,
+        **kwargs
+    )
 
     # Remove nodes+weights+biases, and adjust weights.
     num_nodes: int = len(subset_nodes)
@@ -275,15 +279,15 @@ def prune_conv2d_layer_with_craig(
     # Prune current layer.
     # Multiply weights (and biases?) by subset_weights.
     subset_weights_tensor = torch.tensor(subset_weights)
-    curr_layer.weight = nn.Parameter(
-        curr_layer.weight[subset_nodes]
+    layer.weight = nn.Parameter(
+        layer.weight[subset_nodes]
         * subset_weights_tensor.reshape((num_nodes, 1, 1, 1))
     )
-    if curr_layer.bias is not None:
-        curr_layer.bias = nn.Parameter(
-            curr_layer.bias[subset_nodes] * subset_weights_tensor
+    if layer.bias is not None:
+        layer.bias = nn.Parameter(
+            layer.bias[subset_nodes] * subset_weights_tensor
         )
-    curr_layer.out_channels = num_nodes
+    layer.out_channels = num_nodes
 
     return subset_nodes, subset_weights
 
@@ -314,40 +318,36 @@ def prune_network_with_craig(
     """This currently assumes that all fully connected layers are directly in
     one sequence, and that there are no non-FC layers after the last FC layer
     of that sequence."""
-    """
-    NOTE:   Across each pooling layer, the number of channels stays
-            constant (I think); this is why conv layers on either side of
-            a pooling layer can share the same out_channels and in_channels
-            values, respectively, without worrying about the actual height
-            and width. (I think this is the same for both MaxPool and AvgPool).
-            So, when we reach something like a fully connected layer, which
-            requires a fixed input size, we have to use a pooling layer
-            that outputs a constant size tensor, like the AdaptiveAvgPool2d.
-            Since in the previous conv layer we would have pruned only the
-            number of out_channels, then we can assume that the output of
-            the AdaptiveAvgPool2d layer has the same number of pruned
-            channels.
-            So, based on the way the post-pooling pre-fc flatten works, we
-            can find the subset of channels that were not pruned, and only
-            keep the corresponding weights in the fc network.
-    """
     logger = logging_utils.get_logger(LOGGER_NAME)
 
-    prune_params: Dict = prune_config.prune_params
-    layer_params: Dict = prune_params[prune_config_utils.KEY_LAYER_PARAMS]
+    # Get params for each layer.
+    layer_params: Dict = prune_config.prune_params[
+        prune_config_utils.KEY_LAYER_PARAMS
+    ]
 
+    # Get list of model layers/parameters.
+    # Has backward compat for a previous model version.
     model_prunable_parameters: Any  # This should be an iterable
     if hasattr(model, "prunable_parameters_ordered"):
         model_prunable_parameters = model.prunable_parameters_ordered
     else:
         model_prunable_parameters = model.sequential_module
-
     num_prunable_parameters: int = len(model_prunable_parameters)
     output_layer_index: int = num_prunable_parameters - 1
-    curr_layer_i: int = 0
 
+    # TODO: Set up data_shape based on model_input_shape.
+    # TODO: Initially, assume flatten is applied if first layer is linear.
+    # NOTE: For now, assume no fancy non-nn functions in forward pass.
+
+    curr_layer_i: int = 0
     while curr_layer_i < output_layer_index:
+        # Iterate thru and prune layers, excluding the last (output) layer.
+
+        # Set up the current layer.
         curr_layer: nn.Module = model_prunable_parameters[curr_layer_i]
+        should_skip_layer: bool = False
+
+        # Get the layer type.
         curr_layer_type: Optional[Text] = LAYER_TYPE_MAP.get(
             type(curr_layer), None
         )
@@ -356,22 +356,28 @@ def prune_network_with_craig(
             logger.warn(
                 "Encountered unknown layer type: {}".format(type(curr_layer))
             )
-            curr_layer_i += 1
-            continue
+            should_skip_layer = True
 
         if (curr_layer_type not in CRAIG_LAYER_FUNCTION_MAP) or (
             curr_layer_type not in layer_params
         ):
             # If the curr_layer is not prunable, or not configured, skip.
+            should_skip_layer = True
+
+        if should_skip_layer:
+            # Skip layer if needed.
+            # TODO: Update data_shape based on layer output.
             curr_layer_i += 1
             continue
 
-        # curr_layer is prunable, prune.
+        # Otherwise, curr_layer is prunable, so prune.
         subset_nodes: List[int]
         subset_weights: List[float]
         subset_nodes, subset_weights = CRAIG_LAYER_FUNCTION_MAP[
             curr_layer_type
-        ](curr_layer=curr_layer, **(layer_params[curr_layer_type]))
+        ](layer=curr_layer, **(layer_params[curr_layer_type]))
+
+        # Now, find the next layer to prune the corresponding "in" features/weights.
 
         # Save current layer output shape (or required values) for future use.
         # NOTE: Maybe add an input_shape config parameter to calculate output size?
@@ -553,6 +559,7 @@ def prune_network(
     """
     logger = logging_utils.get_logger(LOGGER_NAME)
 
+    # Create output folder, if it does not exist.
     if not os.path.exists(pruned_output_folder):
         os.makedirs(pruned_output_folder)
 
