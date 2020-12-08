@@ -112,7 +112,8 @@ def get_craig_subset_and_weights(similarity_matrix, target_size):
     )
     total_time = time.time() - time_start
 
-    subset_weights = np.zeros(target_size, dtype=np.float64)
+    # subset_weights = np.zeros(target_size, dtype=np.float64)
+    subset_weights = [0 for i in subset]
     for i in V:
         subset_weights[np.argmax(similarity_matrix[i, subset])] += 1
 
