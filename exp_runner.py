@@ -208,6 +208,8 @@ def run_craig_experiments(
     )
     if "model_input_shape" in exp_config._raw_dict:
         prune_config_root.model_input_shape = exp_config.model_input_shape
+    if "data_transform_name" in exp_config._raw_dict:
+        prune_config_root.data_transform_name = exp_config.data_transform_name
     finetuning_train_config: train_config_utils.TrainConfig = exp_config.finetuning_train_config
 
     # Experiment parameters.

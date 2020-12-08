@@ -18,6 +18,7 @@ class ExpConfig:
     config_id: Text
     prune_type: Text
     model_input_shape: Sequence
+    data_transform_name: Text
     prune_params: Dict
     finetuning_train_config: train_config_utils.TrainConfig
     evaluation_dataset_name: Text
