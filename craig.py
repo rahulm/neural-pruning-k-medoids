@@ -1,14 +1,8 @@
 import heapq
 import math
+import time
 
-import matplotlib
-import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
-import scipy as sp
-from scipy import spatial
-
-# matplotlib.use('TkAgg')
 
 
 class FacilityLocation:
@@ -107,3 +101,19 @@ def lazy_greedy_heap(F, V, B):
 
     return sset, vals
 
+
+def get_craig_subset_and_weights(similarity_matrix, target_size):
+    N = np.shape(similarity_matrix)[0]
+    V = list(range(N))
+
+    time_start = time.time()
+    subset, _ = lazy_greedy_heap(
+        F=FacilityLocation(D=similarity_matrix, V=V), V=V, B=target_size
+    )
+    total_time = time.time() - time_start
+
+    subset_weights = np.zeros(target_size, dtype=np.float64)
+    for i in V:
+        subset_weights[np.argmax(similarity_matrix[i, subset])] += 1
+
+    return subset, subset_weights, total_time
