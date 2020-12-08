@@ -335,6 +335,8 @@ def train_model_with_configs(
             # Incrementally save losses per epoch.
             for stat_counter in stat_counters.values():
                 stat_counter.save_default()
+    except Exception as exception:
+        logger.error(exception, exc_info=True)
     finally:
         # Save losses.
         for stat_counter in stat_counters.values():
