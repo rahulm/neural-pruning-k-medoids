@@ -14,7 +14,7 @@ TODO: Experiment with some possible similarity matrices.
 
 """
 
-from typing import Sequence, Text
+from typing import List, Sequence, Text
 
 import numpy as np
 import torch
@@ -61,6 +61,10 @@ class Model(nn.Module):
             self.relu_2,
             self.fc_output,
         )
+
+    @property
+    def ordered_unpacking(self) -> List[nn.Module]:
+        return [layer for layer in self.sequential_module]
 
     def forward(self, x):
         return self.sequential_module(x)

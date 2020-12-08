@@ -36,7 +36,7 @@ class Model(nn.Module):
         )
 
     @property
-    def prunable_parameters_ordered(self) -> List[nn.Module]:
+    def ordered_unpacking(self) -> List[nn.Module]:
         return (
             list(self.pytorch_model.features)
             + [self.pytorch_model.avgpool]

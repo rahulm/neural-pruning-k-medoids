@@ -6,7 +6,7 @@ a model based on the Python module name, without knowing the actual class name.
 """
 
 from collections import OrderedDict
-from typing import Any, Sequence, Text
+from typing import Any, List, Sequence, Text
 
 import numpy as np
 import torch
@@ -42,6 +42,10 @@ class Model(nn.Module):
         #       list or sequential module is run in the forward pass.
         # For now, explicitly use sequential_module in every NN for pruning.
         self.sequential_module = nn.Sequential(layers_od)
+
+    @property
+    def ordered_unpacking(self) -> List[nn.Module]:
+        return [layer for layer in self.sequential_module]
 
     def forward(self, x):
         return self.sequential_module(x)
