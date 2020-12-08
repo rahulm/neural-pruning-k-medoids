@@ -24,6 +24,7 @@ class PruneConfig:
     model_config: model_config_utils.ModelConfig
     prune_type: Text
     model_input_shape: Sequence
+    data_transform_name: Text
     prune_params: Dict
     original_model_path: Text
     pruned_model_out_folder: Text
