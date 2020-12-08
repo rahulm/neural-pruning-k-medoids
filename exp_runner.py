@@ -202,11 +202,12 @@ def run_craig_experiments(
     prune_config_root: prune_config_utils.PruneConfig = prune_config_utils.PruneConfig(
         {
             "prune_type": "craig",
-            "model_input_shape": exp_config.model_input_shape,
             "prune_params": {},
+            "original_model_path": original_model_path,
         }
     )
-    prune_config_root.original_model_path = original_model_path
+    if "model_input_shape" in exp_config._raw_dict:
+        prune_config_root.model_input_shape = exp_config.model_input_shape
     finetuning_train_config: train_config_utils.TrainConfig = exp_config.finetuning_train_config
 
     # Experiment parameters.
