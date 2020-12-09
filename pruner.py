@@ -24,7 +24,6 @@ import torch
 from torch import nn
 
 import craig
-from mussay_neural_pruning import coreset
 from utils import (
     general_config_utils,
     logging_utils,
@@ -286,13 +285,6 @@ LAYER_NAME_MAP: Dict[Type[nn.Module], Text] = {
     nn.Flatten: "flatten",
 }
 
-OLD_CRAIG_LAYER_FUNCTION_MAP: Dict[
-    Text, Callable[..., Tuple[List[int], List[float]]]
-] = {
-    prune_config_utils.KEY_LAYER_LINEAR: prune_fc_layer_with_craig,
-    prune_config_utils.KEY_LAYER_CONV2D: prune_conv2d_layer_with_craig,
-}
-
 CRAIG_LAYER_FUNCTION_MAP: Dict[
     Type[nn.Module], Callable[..., Tuple[List[int], List[float]]]
 ] = {
@@ -363,17 +355,26 @@ def prune_network_with_craig(
         # Iterate through layers, prune as necessary.
         curr_layer: nn.Module = model_layers[curr_layer_i]
         curr_layer_type: Type[nn.Module] = type(curr_layer)
-        curr_layer_name: Text
-        curr_layer_prune_func: Callable[..., Tuple[List[int], List[float]]]
+        curr_layer_params: Optional[Dict]
+        curr_layer_prune_func: Optional[
+            Callable[..., Tuple[List[int], List[float]]]
+        ]
 
-        if (curr_layer_type in CRAIG_LAYER_FUNCTION_MAP) and (
-            LAYER_NAME_MAP[curr_layer_type] in layer_params
-        ):
-            # If the current layer is prunable and is set up in the PruneConfig, then we can prune.
-            curr_layer_name = LAYER_NAME_MAP[curr_layer_type]
-            curr_layer_prune_func = CRAIG_LAYER_FUNCTION_MAP[curr_layer_type]
-        else:
-            # Otherwise, skip this layer.
+        curr_layer_prune_func = CRAIG_LAYER_FUNCTION_MAP.get(
+            curr_layer_type, None
+        )
+        curr_layer_params = layer_params.get(
+            LAYER_NAME_MAP.get(
+                curr_layer_type, None
+            ),  # First try to get the current layer params
+            layer_params.get(
+                prune_config_utils.KEY_LAYER_ALL,  # Otherwise try to get an "all" overriding param
+                None,
+            ),
+        )
+
+        if (not curr_layer_prune_func) or (not curr_layer_params):
+            # If either the prune function or prune params was not found, skip.
             curr_layer_i += 1
             continue
 
@@ -381,7 +382,7 @@ def prune_network_with_craig(
         subset_nodes: List[int]
         subset_weights: List[float]
         subset_nodes, subset_weights = curr_layer_prune_func(
-            layer=curr_layer, **(layer_params[curr_layer_name])
+            layer=curr_layer, **(curr_layer_params)
         )
         subset_len: int = len(subset_nodes)
 
@@ -470,6 +471,7 @@ def prune_network_with_mussay(
     """This currently assumes that all fully connected layers are directly in
     one sequence, and that there are no non-FC layers after the last FC layer
     of that sequence."""
+    from mussay_neural_pruning import coreset
 
     # Prune params.
     prune_params: Dict = prune_config.prune_params

@@ -7,6 +7,7 @@ from typing import Dict, Sequence, Text, Tuple
 from . import model_config_utils
 
 KEY_LAYER_PARAMS: Text = "layer_params"
+KEY_LAYER_ALL: Text = "all"
 KEY_LAYER_LINEAR: Text = "linear"
 KEY_LAYER_CONV2D: Text = "conv2d"
 KEY_LAYER_BATCHNORM2D: Text = "batchnorm2d"
