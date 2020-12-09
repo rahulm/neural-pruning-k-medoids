@@ -14,7 +14,7 @@ def create_exp_configs(original_config_path: Text):
 
     # For now, just explicitly search layers and params.
     to_search: Dict = exp_config.prune_params["layer_params"]
-    layer_names: List[Text] = ["linear", "conv2d"]
+    layer_names: List[Text] = ["all", "linear", "conv2d"]
     param_names: List[Text] = [
         "similarity_metric",
         "prune_percent_per_layer",
