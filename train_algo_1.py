@@ -3,10 +3,12 @@ This is a semi-generic training algo, arbitrarily named "train_algo_1".
 It may be good to rename this to something more informative.
 """
 
+import gc
 import importlib
 import os
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Text, Union
+import time
 
 import torch
 import torch.nn.functional as F
@@ -145,6 +147,7 @@ def train_model_with_configs(
     save_interval: int = 1,
     save_best_checkpoint: bool = True,
     use_gpu: bool = True,
+    # cuda_device_id: int = 0,
 ) -> Dict[Text, train_utils.StatCounter]:
     logger = logging_utils.get_logger(__name__)
     log_interval: int = 100
@@ -152,6 +155,9 @@ def train_model_with_configs(
     assert save_interval >= 0, "save_interval must be >= 0"
     save_checkpoint_per_epoch: bool = (save_interval != 0)
 
+    # torch_device = torch.device(
+    #     "cuda:{}".format(cuda_device_id) if use_gpu else "cpu"
+    # )
     torch_device = torch.device("cuda" if use_gpu else "cpu")
     torch.manual_seed(train_config.random_seed)
 
@@ -299,7 +305,7 @@ def train_model_with_configs(
         err_msg: Text = "Model config or path to model checkpoint must be provided."
         logger.error(err_msg)
         raise TypeError(err_msg)
-    model.to(device=torch_device)
+    model = model.to(device=torch_device)
 
     # Just using basic Stochastic Gradient Descent.
     # TODO: Add weigh decay? May not be necesssary for this task
@@ -416,6 +422,16 @@ def train_model_with_configs(
             # Incrementally save losses per epoch.
             for stat_counter in stat_counters.values():
                 stat_counter.save_default()
+
+            # NOTE: Not sure if this is needed or works well.
+            time_before = time.time()
+            num_collected = gc.collect()
+            logger.info(
+                "Garbage collected {} items in {} seconds".format(
+                    num_collected, time.time() - time_before
+                )
+            )
+
     except Exception as exception:
         logger.error(exception, exc_info=True)
     finally:
@@ -508,6 +524,14 @@ def get_args():
         help="Use CPU instead of GPU.",
     )
 
+    parser.add_argument(
+        "--cuda_device_id",
+        required=False,
+        type=str,
+        default=0,
+        help="The id of the cuda device, if used.",
+    )
+
     return parser.parse_args()
 
 
@@ -544,15 +568,16 @@ def main() -> None:
         args.train_config
     )
 
-    train_model_with_configs(
-        model_config_or_checkpoint=model_config_or_checkpoint,
-        train_config=train_config,
-        experiment_folder_path=experiment_folder_path,
-        resume_training=args.resume_training,
-        save_interval=args.save_interval,
-        save_best_checkpoint=args.save_best_checkpoint,
-        use_gpu=not args.no_cuda,
-    )
+    with torch.cuda.device(args.cuda_device_id):
+        train_model_with_configs(
+            model_config_or_checkpoint=model_config_or_checkpoint,
+            train_config=train_config,
+            experiment_folder_path=experiment_folder_path,
+            resume_training=args.resume_training,
+            save_interval=args.save_interval,
+            save_best_checkpoint=args.save_best_checkpoint,
+            use_gpu=not args.no_cuda,
+        )
 
 
 if __name__ == "__main__":

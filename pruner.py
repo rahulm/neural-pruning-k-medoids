@@ -558,7 +558,7 @@ def prune_network(
             )
         )
         if prune_config.prune_type == "craig":
-            model.to(torch.device("cpu"))
+            model = model.to(torch.device("cpu"))
             prune_network_with_craig(
                 model=model, prune_config=prune_config, **kwargs
             )

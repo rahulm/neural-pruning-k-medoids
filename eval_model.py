@@ -30,7 +30,7 @@ def evaluate_model(
     loss_sum: float = 0.0
     num_correct: int = 0
 
-    model.to(torch_device)
+    model = model.to(torch_device)
     model.eval()
     with torch.no_grad():
         for data, target in dataloader:
@@ -122,18 +122,29 @@ def get_args():
         help="The split to evaluate on.",
     )
 
+    parser.add_argument(
+        "--cuda_device_id",
+        required=False,
+        type=str,
+        default=0,
+        help="The id of the cuda device, if used.",
+    )
+
     return parser.parse_args()
 
 
 def main() -> None:
     args = get_args()
-    test_acc, test_loss = evaluate_model_from_checkpoint_file(
-        model_path_checkpoint=args.model_checkpoint,
-        dataset_name=args.dataset,
-        split=args.split,
-        batch_size=args.batch_size,
-        use_gpu=not args.no_cuda,
-    )
+
+    with torch.cuda.device(args.cuda_device_id):
+        test_acc, test_loss = evaluate_model_from_checkpoint_file(
+            model_path_checkpoint=args.model_checkpoint,
+            dataset_name=args.dataset,
+            split=args.split,
+            batch_size=args.batch_size,
+            use_gpu=not args.no_cuda,
+        )
+
     print(
         "{} - {} || Accuracy: {:.4f} | Average loss: {:.4f}".format(
             args.dataset, args.split, test_acc, test_loss
