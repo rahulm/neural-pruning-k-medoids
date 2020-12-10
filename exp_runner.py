@@ -117,12 +117,12 @@ def run_single_experiment(
     pruner.prune_network(
         prune_config=prune_config, pruned_output_folder=prune_out_folder_path
     )
-    # pruned_model_path: Text = os.path.join(
-    #     prune_out_folder_path, pruner.FILE_NAME_MODEL
-    # )
     pruned_model_path: Text = os.path.join(
-        prune_out_folder_path, pruner.FILE_NAME_STATE_DICT
+        prune_out_folder_path, pruner.FILE_NAME_MODEL
     )
+    # pruned_model_path: Text = os.path.join(
+    #     prune_out_folder_path, pruner.FILE_NAME_STATE_DICT
+    # )
 
     # Finetune.
     logger.info("finetuning...")
