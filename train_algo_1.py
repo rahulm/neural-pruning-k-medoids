@@ -6,10 +6,12 @@ It may be good to rename this to something more informative.
 import gc
 import importlib
 import os
+import random
+import time
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Text, Union
-import time
 
+import numpy as np
 import torch
 import torch.nn.functional as F
 import torchvision
@@ -155,11 +157,29 @@ def train_model_with_configs(
     assert save_interval >= 0, "save_interval must be >= 0"
     save_checkpoint_per_epoch: bool = (save_interval != 0)
 
-    # torch_device = torch.device(
-    #     "cuda:{}".format(cuda_device_id) if use_gpu else "cpu"
-    # )
     torch_device = torch.device("cuda" if use_gpu else "cpu")
-    torch.manual_seed(train_config.random_seed)
+    if "random_seed" in train_config._raw_dict:
+        random.seed(train_config.random_seed)
+        np.random.seed(train_config.random_seed)
+        torch.manual_seed(train_config.random_seed)
+        torch.cuda.manual_seed(train_config.random_seed)
+    # Using this for reproducibility
+    torch.backends.cudnn.deterministic = True
+
+    random_info_str: Text = """Random info:
+random.setstate({random})
+np.random.set_state({nprandom})
+torch.manual_seed({torch})
+torch.cuda.manual_seed({torchcuda})
+torch.backends.cudnn.deterministic = {torchcudnn}
+    """.format(
+        random=random.getstate(),
+        nprandom=np.random.get_state(),
+        torch=torch.initial_seed(),
+        torchcuda=torch.cuda.initial_seed(),
+        torchcudnn=torch.backends.cudnn.deterministic,
+    )
+    logger.info(random_info_str)
 
     # Set up some experiment directories.
     checkpoints_folder_path: Text = os.path.join(
