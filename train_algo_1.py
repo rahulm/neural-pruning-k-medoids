@@ -63,26 +63,26 @@ def save_model_and_state_dict_checkpoint(
         ),
     )
 
-    state_dict = {
-        "model_state_dict": model.state_dict(),
-        "epoch": epoch,
-        "checkpoint_name": checkpoint_name,
-    }
-    if model_config:
-        state_dict["model_config"] = model_config._raw_dict
-    if optimizer:
-        state_dict["optimizer_state_dict"] = optimizer.state_dict()
-    if scheduler:
-        state_dict["scheduler_state_dict"] = scheduler.state_dict()
-    state_dict.update(kwargs)
+    # state_dict = {
+    #     "model_state_dict": model.state_dict(),
+    #     "epoch": epoch,
+    #     "checkpoint_name": checkpoint_name,
+    # }
+    # if model_config:
+    #     state_dict["model_config"] = model_config._raw_dict
+    # if optimizer:
+    #     state_dict["optimizer_state_dict"] = optimizer.state_dict()
+    # if scheduler:
+    #     state_dict["scheduler_state_dict"] = scheduler.state_dict()
+    # state_dict.update(kwargs)
 
-    torch.save(
-        state_dict,
-        os.path.join(
-            checkpoints_folder_path,
-            FILE_NAME_FORMAT_CHECKPOINT_STATE_DICT.format(checkpoint_name),
-        ),
-    )
+    # torch.save(
+    #     state_dict,
+    #     os.path.join(
+    #         checkpoints_folder_path,
+    #         FILE_NAME_FORMAT_CHECKPOINT_STATE_DICT.format(checkpoint_name),
+    #     ),
+    # )
 
 
 # def save_model_checkpoint(

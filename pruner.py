@@ -640,19 +640,19 @@ def prune_network(
         json.dump(out_model_config, out_model_config_file)
     logger.info("Wrote model config to: {}".format(out_model_config_path))
 
-    out_state_dict_path: Text = os.path.join(
-        pruned_output_folder, FILE_NAME_STATE_DICT
-    )
-    torch.save(
-        {
-            "model_state_dict": model.state_dict(),
-            "model_config": out_model_config,
-        },
-        out_state_dict_path,
-    )
-    logger.info(
-        "Wrote model state dict with config to: {}".format(out_state_dict_path)
-    )
+    # out_state_dict_path: Text = os.path.join(
+    #     pruned_output_folder, FILE_NAME_STATE_DICT
+    # )
+    # torch.save(
+    #     {
+    #         "model_state_dict": model.state_dict(),
+    #         "model_config": out_model_config,
+    #     },
+    #     out_state_dict_path,
+    # )
+    # logger.info(
+    #     "Wrote model state dict with config to: {}".format(out_state_dict_path)
+    # )
 
 
 ### CLI
