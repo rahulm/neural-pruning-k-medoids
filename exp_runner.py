@@ -744,6 +744,10 @@ def main() -> None:
             config_file_loc=args.model_config
         )
 
+    # Set mp 'spawn' method for torch.
+    mp.set_start_method("spawn")
+
+    # Run everything.
     run_experiments(
         exp_config=exp_config,
         model_checkpoint_path=args.model_checkpoint,
