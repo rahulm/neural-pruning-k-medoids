@@ -43,10 +43,17 @@ class PruneConfig:
                 return model_config_utils.ModelConfig(val)
             else:
                 return val
-        return super().__getattribute__(name)
+        else:
+            raise AttributeError("Attribute not found: {}".format(name))
 
     def __repr__(self) -> Text:
         return str(self._raw_dict)
+
+    def __getstate__(self):
+        return self._raw_dict
+
+    def __setstate__(self, state):
+        super().__setattr__("_raw_dict", state)
 
 
 def get_config_from_file(config_file_loc: Text) -> PruneConfig:

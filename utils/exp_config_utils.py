@@ -25,6 +25,9 @@ class ExpConfig:
     evaluation_dataset_batch_size: int
     evaluation_epochs: List[Union[int, Text]]
 
+    cuda_model_max_mb: int
+    cuda_max_percent_mem_usage: float
+
     def __init__(self, config_dict: Dict) -> None:
         super().__setattr__("_raw_dict", config_dict)
 
@@ -38,10 +41,21 @@ class ExpConfig:
                 return train_config_utils.TrainConfig(val)
             else:
                 return val
-        return super().__getattribute__(name)
+        elif name == "cuda_model_max_mb":
+            return -1
+        elif name == "cuda_max_percent_mem_usage":
+            return 0.75
+        else:
+            raise AttributeError("Attribute not found: {}".format(name))
 
     def __repr__(self) -> Text:
         return str(self._raw_dict)
+
+    def __getstate__(self):
+        return self._raw_dict
+
+    def __setstate__(self, state):
+        super().__setattr__("_raw_dict", state)
 
 
 def get_config_from_file(config_file_loc: Text) -> ExpConfig:

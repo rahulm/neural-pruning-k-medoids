@@ -2,14 +2,19 @@
 
 import argparse
 import csv
+import gc
 import itertools
+import multiprocessing as mp
 import os
 import random
 import shutil
+import threading
 import time
 from collections import OrderedDict
 from datetime import datetime
 from typing import Dict, List, Optional, Sequence, Text, Tuple, Union
+
+import torch
 
 import eval_model
 import pruner
@@ -24,9 +29,27 @@ from utils import (
     train_utils,
 )
 
+LOGGER_NAME: Text = "exp_runner"
+
 PRINT_FORMAT: Text = "{} ||\tSize (number of parameters): {}\t|\tTrain acc: {}\t|\tTest acc: {}"
 
-LOGGER_NAME: Text = "exp_runner"
+FILE_NAME_FORMAT_MAIN_LOG: Text = "main-runner_log-{}.txt"
+FILE_NAME_FORMAT_SUB_LOG: Text = "sub-runner_log-{}.txt"
+FILE_NAME_FORMAT_MAIN_RESULTS: Text = "main-results_raw-{}.csv"
+FILE_NAME_FORMAT_SUB_RESULTS: Text = "sub-results_raw-{}.csv"
+
+
+def clear_mem(logger=None) -> Text:
+    # NOTE: Not sure if this is needed or works well.
+    torch.cuda.empty_cache()
+    time_before = time.time()
+    num_collected = gc.collect()
+    log_str = "Garbage collected {} items in {} seconds".format(
+        num_collected, time.time() - time_before
+    )
+    if logger:
+        logger.info(log_str)
+    return log_str
 
 
 def get_exp_str_from_param(param: Union[int, float, Text, Dict]) -> Text:
@@ -37,7 +60,13 @@ def get_exp_str_from_param(param: Union[int, float, Text, Dict]) -> Text:
     ):
         return str(param)
     if isinstance(param, dict):
-        return str(param).replace(" ", "").replace(":", "_")
+        return (
+            str(param)
+            .replace(" ", "")
+            .replace(":", "_")
+            .replace("{", "[")
+            .replace("}", "]")
+        )
 
     raise ValueError("param must be str or dict: {}".format(param))
 
@@ -78,18 +107,25 @@ def evaluate_model(
 
 
 def write_results_to_csv(
-    experiment_vals: List, out_folder_path: Text, datetime_string: Text
+    experiment_vals: Dict[int, List],
+    out_folder_path: Text,
+    file_name_format: Text,
+    datetime_string: Text,
 ) -> Text:
     out_csv_path: Text = os.path.join(
-        out_folder_path, "results_raw-{}.csv".format(datetime_string),
+        out_folder_path, file_name_format.format(datetime_string),
     )
+    vals_to_print: List[List] = [
+        experiment_vals[vid] for vid in sorted(experiment_vals.keys())
+    ]
     with open(out_csv_path, "w", newline="") as out_csv:
         csv_writer = csv.writer(out_csv)
-        csv_writer.writerows(experiment_vals)
+        csv_writer.writerows(vals_to_print)
     return out_csv_path
 
 
 def run_single_experiment(
+    exp_id: int,
     prune_config: prune_config_utils.PruneConfig,
     prune_out_folder_path: Text,
     finetuning_train_config: train_config_utils.TrainConfig,
@@ -98,6 +134,7 @@ def run_single_experiment(
 ) -> List:
     # Logging.
     logger = logging_utils.get_logger(name=LOGGER_NAME)
+    logger.info("Starting experiment with exp_id: {}".format(exp_id))
 
     # Set up prune folder.
     if not os.path.exists(prune_out_folder_path):
@@ -188,8 +225,37 @@ def run_single_experiment(
     return eval_results
 
 
+def exp_process_function(
+    thread_device_id: int,
+    thread_exp_id: int,
+    thread_exp_args: Dict,
+    res_q: mp.Queue,
+):
+    logging_utils.setup_unique_log_file(
+        root_folder_path=thread_exp_args["prune_out_folder_path"],
+        file_name_format=FILE_NAME_FORMAT_SUB_LOG,
+    )
+    logger = logging_utils.get_logger(LOGGER_NAME)
+    logger.info(
+        """
+>>> process <<<
+thread_device_id: {thread_device_id}
+thread_exp_id: {thread_exp_id}
+thread_exp_args: {thread_exp_args}
+""".format(
+            thread_device_id=thread_device_id,
+            thread_exp_id=thread_exp_id,
+            thread_exp_args=thread_exp_args,
+        )
+    )
+    with torch.cuda.device(thread_device_id):
+        res = run_single_experiment(**thread_exp_args)
+        res_q.put(res)
+    clear_mem(logger)
+
+
 def run_craig_experiments(
-    experiment_vals: List,
+    experiment_vals: Dict[int, List],
     exp_config: exp_config_utils.ExpConfig,
     original_model_name: Text,
     original_model_path: Text,
@@ -200,6 +266,48 @@ def run_craig_experiments(
 ) -> None:
     # Logging.
     logger = logging_utils.get_logger(name=LOGGER_NAME)
+
+    clear_mem(logger)
+
+    # Set up multiprocessing and cuda.
+    num_cuda_devices: int = torch.cuda.device_count()
+    mem_per_cuda_device: List[int] = [
+        torch.cuda.get_device_properties(
+            device_id
+        ).total_memory  # TODO: Make sure this is the right value, in bytes.
+        for device_id in range(num_cuda_devices)
+    ]
+    cuda_device_names: List[Text] = [
+        torch.cuda.get_device_properties(device_id).name
+        for device_id in range(num_cuda_devices)
+    ]
+    max_model_size: int = -1 if (exp_config.cuda_model_max_mb == -1) else (
+        1000 * 1000 * exp_config.cuda_model_max_mb
+    )
+    max_procs_per_device: List[int] = [
+        int(  # Take the floor.
+            1
+            if (max_model_size == -1)
+            else (
+                (mem * exp_config.cuda_max_percent_mem_usage) / max_model_size
+            )
+        )
+        for mem in mem_per_cuda_device
+    ]
+    max_process_count: int = sum(max_procs_per_device)
+    logger.info(
+        "Found the following cuda devices: {}".format(
+            [
+                "(name='{cdn}', mem={cdm}, max_exp={cde})".format(
+                    cdn=cdn, cdm=cdm, cde=cde
+                )
+                for cdn, cdm, cde in zip(
+                    cuda_device_names, mem_per_cuda_device, max_procs_per_device
+                )
+            ]
+        )
+    )
+    # TODO: Give each config an id. Allow each process to save its results to a list.
 
     # Set up root configs.
     prune_config_root: prune_config_utils.PruneConfig = prune_config_utils.PruneConfig(
@@ -215,7 +323,7 @@ def run_craig_experiments(
         prune_config_root.data_transform_name = exp_config.data_transform_name
     finetuning_train_config: train_config_utils.TrainConfig = exp_config.finetuning_train_config
 
-    # Experiment parameters.
+    # Create experiment parameters.
     # prune_layer_params: OrderedDict = OrderedDict(
     prune_layer_params: Dict = exp_config.prune_params[
         prune_config_utils.KEY_LAYER_PARAMS
@@ -232,7 +340,13 @@ def run_craig_experiments(
         itertools.product(*prune_param_values)
     )
 
-    for param_permutation in exp_value_permutations:
+    # Create list of experiment function arguments.
+    exp_function_arguments: List[Dict] = []
+    exp_names: List[Text] = []
+    for exp_id, param_permutation in enumerate(exp_value_permutations):
+        # Start with a exp_id of 0.
+
+        # Build layer params from this param_permutation.
         exp_layer_params: Dict = {}
         for exp_param_ind, exp_param in enumerate(param_permutation):
             exp_param_dict = exp_layer_params.setdefault(
@@ -243,6 +357,7 @@ def run_craig_experiments(
             prune_config_utils.KEY_LAYER_PARAMS: exp_layer_params
         }
 
+        # Create experiment name.
         exp_name_temp_list = []
         for e_layer_name, e_layer in exp_layer_params.items():
             e_params = [get_exp_str_from_param(e_p) for e_p in e_layer.values()]
@@ -251,17 +366,16 @@ def run_craig_experiments(
             )
         exp_name = "--".join(exp_name_temp_list)
 
+        # Name the output folder after the experiment name.
         prune_out_folder_path: Text = os.path.join(out_folder_path, exp_name)
 
-        exp_result: List = [
-            original_model_name,
-            exp_name,
-            "",
-        ]
-        exp_result.extend(original_model_results.copy())
-        exp_result.extend(
-            run_single_experiment(
-                prune_config=prune_config_root,
+        exp_names.append(exp_name)
+        exp_function_arguments.append(
+            dict(
+                exp_id=exp_id,
+                prune_config=prune_config_utils.PruneConfig(
+                    prune_config_root._raw_dict.copy()
+                ),
                 prune_out_folder_path=prune_out_folder_path,
                 finetuning_train_config=finetuning_train_config,
                 original_model_config=original_model_config,
@@ -269,96 +383,219 @@ def run_craig_experiments(
             )
         )
 
-        experiment_vals.append(exp_result)
+    logger.info("All experiment configs: {}".format(exp_function_arguments))
+    num_experiments_total: int = len(exp_function_arguments)
+    num_experiments_complete: int = 0
+    next_exp_id: int = 0
+    processes_per_device: List[Dict] = [{} for i in range(num_cuda_devices)]
+
+    # Results queue
+    exp_results_q: mp.Queue = mp.Queue()
+
+    def exp_thread_function(
+        thread_device_id: int, thread_exp_id: int, thread_exp_args: Dict
+    ):
+        # NOTE: Using a mp.Queue because it is process-safe, this is not the most elegant solution.
+        thread_q: mp.Queue = mp.Queue()
+        proc = mp.Process(
+            target=exp_process_function,
+            kwargs=dict(
+                thread_device_id=thread_device_id,
+                thread_exp_id=thread_exp_id,
+                thread_exp_args=thread_exp_args,
+                res_q=thread_q,
+            ),
+        )
+        try:
+            proc.start()
+            proc.join()
+        except Exception as e:
+            logger.error(e, exc_info=True)
+        finally:
+            # Adding this empty result so the thread can exit if something breaks.
+            thread_q.put([])
+        exp_results_q.put(
+            (thread_device_id, thread_exp_id, thread_q.get(block=True))
+        )
+
+    # First, attempt to start new processes.
+    for device_id, max_procs in enumerate(max_procs_per_device):
+        if next_exp_id >= num_experiments_total:
+            break
+        for pid in range(max_procs):
+            if next_exp_id >= num_experiments_total:
+                break
+
+            thread = threading.Thread(
+                target=exp_thread_function,
+                kwargs=dict(
+                    thread_device_id=device_id,
+                    thread_exp_id=next_exp_id,
+                    thread_exp_args=exp_function_arguments[next_exp_id],
+                ),
+            )
+            thread.start()
+            processes_per_device[device_id][next_exp_id] = thread
+            next_exp_id += 1
+
+    # Now, continually check for free devices.
+    while num_experiments_complete < num_experiments_total:
+        # Since there are still experiments to complete, just wait for results.
+        next_result = exp_results_q.get(block=True)
+        res_device_id, res_exp_id, res_vals = next_result
+        logger.info(
+            "Got result for {} : {}".format(exp_names[res_exp_id], next_result)
+        )
+
+        # If a result is available, then an experiment is done.
+        # Join on the thread, then remove from list.
+        processes_per_device[res_device_id][res_exp_id].join()
+        del processes_per_device[res_device_id][res_exp_id]
+
+        # Increment the completion count.
+        num_experiments_complete += 1
+
+        # Add results to total results.
+        experiment_vals[res_exp_id] = (
+            [res_exp_id, original_model_name, exp_names[res_exp_id], "",]
+            + original_model_results.copy()
+            + res_vals
+        )
 
         # Incrementally save experiment_vals.
         write_results_to_csv(
             experiment_vals=experiment_vals,
             out_folder_path=out_folder_path,
+            file_name_format=FILE_NAME_FORMAT_MAIN_RESULTS,
             datetime_string=datetime_string,
         )
 
-
-def run_mussay_experiments(
-    experiment_vals: List,
-    prune_out_folder_root_path: Text,
-    original_model_name: Text,
-    original_model_path: Text,
-    original_model_config_path: Text,
-    original_model_train_config_path: Text,
-    original_model_results: List,
-    evaluation_epochs_list: List[int],
-) -> None:
-    # Logging.
-    logger = logging_utils.get_logger(name=LOGGER_NAME)
-
-    # Set up root configs.
-    prune_config_root: prune_config_utils.PruneConfig = prune_config_utils.PruneConfig(
-        {
-            "prune_type": "mussay",
-            "prune_params": {"compression_type": "Coreset"},
-        }
-    )
-    finetuning_train_config: train_config_utils.TrainConfig = train_config_utils.get_config_from_file(
-        config_file_loc=original_model_train_config_path
-    )
-    finetuning_train_config.num_epochs = 20  # TODO: Play with this value?
-
-    # Experiment parameters.
-    prune_config_root.original_model_path = original_model_path
-    list_percent_per_layer: List[float] = [
-        0.1,
-        0.2,
-        0.3,
-        0.4,
-        0.5,
-        0.6,
-        0.7,
-        0.8,
-        0.9,
-    ]
-    list_upper_bound: List[
-        float
-    ] = [  # TODO: Figure out what range is used here for beta.
-        0.25,
-        0.50,
-        0.75,
-        1.00,
-        2.00,
-        10.0,
-    ]
-
-    for upper_bound in list_upper_bound:
-        for percent_per_layer in list_percent_per_layer:
-            prune_config_root.prune_params[
-                "prune_percent_per_layer"
-            ] = percent_per_layer
-            prune_config_root.prune_params["upper_bound"] = upper_bound
-
-            prune_exp_name: Text = "upper_bound_{}-prune_percent_{}".format(
-                upper_bound, percent_per_layer
+        logger.info(
+            "Jobs complete: {}/{} ({:.2%})".format(
+                num_experiments_complete,
+                num_experiments_total,
+                num_experiments_complete / num_experiments_total,
             )
+        )
 
-            exp_result: List = [
-                original_model_name,
-                prune_exp_name,
-                upper_bound,
-                percent_per_layer,
-                "",
-            ]
-            exp_result.extend(original_model_results.copy())
-            exp_result.extend(
-                run_single_experiment(
-                    prune_config=prune_config_root,
-                    prune_out_folder_root_path=prune_out_folder_root_path,
-                    prune_exp_name=prune_exp_name,
-                    finetuning_train_config=finetuning_train_config,
-                    original_model_config_path=original_model_config_path,
-                    evaluation_epochs_list=evaluation_epochs_list,
+        # Add a new process to this device, if needed.
+        if next_exp_id < num_experiments_total:
+            logger.info(
+                "Starting next exp on device {} : ({}) {}".format(
+                    res_device_id, next_exp_id, exp_names[next_exp_id]
                 )
             )
+            thread = threading.Thread(
+                target=exp_thread_function,
+                kwargs=dict(
+                    thread_device_id=res_device_id,
+                    thread_exp_id=next_exp_id,
+                    thread_exp_args=exp_function_arguments[next_exp_id],
+                ),
+            )
+            thread.start()
+            processes_per_device[res_device_id][next_exp_id] = thread
+            next_exp_id += 1
 
-            experiment_vals.append(exp_result)
+        # Print running procs for reference.
+        logger.info(
+            "Current process count per device: {}".format(
+                [len(procs) for procs in processes_per_device]
+            )
+        )
+        logger.info(
+            "Current experiment IDs per device: {}".format(
+                [list(procs.keys()) for procs in processes_per_device]
+            )
+        )
+
+    logger.info(
+        "All {}/{} jobs completed".format(
+            num_experiments_complete, num_experiments_total
+        )
+    )
+
+
+# def run_mussay_experiments(
+#     experiment_vals: List,
+#     prune_out_folder_root_path: Text,
+#     original_model_name: Text,
+#     original_model_path: Text,
+#     original_model_config_path: Text,
+#     original_model_train_config_path: Text,
+#     original_model_results: List,
+#     evaluation_epochs_list: List[int],
+# ) -> None:
+#     # Logging.
+#     logger = logging_utils.get_logger(name=LOGGER_NAME)
+
+#     # Set up root configs.
+#     prune_config_root: prune_config_utils.PruneConfig = prune_config_utils.PruneConfig(
+#         {
+#             "prune_type": "mussay",
+#             "prune_params": {"compression_type": "Coreset"},
+#         }
+#     )
+#     finetuning_train_config: train_config_utils.TrainConfig = train_config_utils.get_config_from_file(
+#         config_file_loc=original_model_train_config_path
+#     )
+#     finetuning_train_config.num_epochs = 20  # TODO: Play with this value?
+
+#     # Experiment parameters.
+#     prune_config_root.original_model_path = original_model_path
+#     list_percent_per_layer: List[float] = [
+#         0.1,
+#         0.2,
+#         0.3,
+#         0.4,
+#         0.5,
+#         0.6,
+#         0.7,
+#         0.8,
+#         0.9,
+#     ]
+#     list_upper_bound: List[
+#         float
+#     ] = [  # TODO: Figure out what range is used here for beta.
+#         0.25,
+#         0.50,
+#         0.75,
+#         1.00,
+#         2.00,
+#         10.0,
+#     ]
+
+#     for upper_bound in list_upper_bound:
+#         for percent_per_layer in list_percent_per_layer:
+#             prune_config_root.prune_params[
+#                 "prune_percent_per_layer"
+#             ] = percent_per_layer
+#             prune_config_root.prune_params["upper_bound"] = upper_bound
+
+#             prune_exp_name: Text = "upper_bound_{}-prune_percent_{}".format(
+#                 upper_bound, percent_per_layer
+#             )
+
+#             exp_result: List = [
+#                 original_model_name,
+#                 prune_exp_name,
+#                 upper_bound,
+#                 percent_per_layer,
+#                 "",
+#             ]
+#             exp_result.extend(original_model_results.copy())
+#             exp_result.extend(
+#                 run_single_experiment(
+#                     prune_config=prune_config_root,
+#                     prune_out_folder_root_path=prune_out_folder_root_path,
+#                     prune_exp_name=prune_exp_name,
+#                     finetuning_train_config=finetuning_train_config,
+#                     original_model_config_path=original_model_config_path,
+#                     evaluation_epochs_list=evaluation_epochs_list,
+#                 )
+#             )
+
+#             experiment_vals.append(exp_result)
 
 
 def run_experiments(
@@ -401,8 +638,11 @@ def run_experiments(
         )
     )
 
+    clear_mem(logger)
+
     # Experiment results container.
-    experiment_vals: List[List] = []
+    # experiment_vals: List[List] = []
+    experiment_vals: Dict[int, List] = {}
 
     try:
         prune_type: Text = exp_config.prune_type
@@ -437,6 +677,7 @@ def run_experiments(
         out_csv_path: Text = write_results_to_csv(
             experiment_vals=experiment_vals,
             out_folder_path=out_folder_path,
+            file_name_format=FILE_NAME_FORMAT_MAIN_RESULTS,
             datetime_string=datetime_string,
         )
         logger.info("results written to: {}".format(out_csv_path))
@@ -487,26 +728,12 @@ def main() -> None:
 
     # Logging.
     # Assuming that an existing log file means that the corresponding results file will be taken.
-    datetime_string: Text
-    while True:
-        datetime_string = datetime.now().strftime("%Y_%m_%d-%H_%M_%S")
-        try:
-            logging_utils.setup_logging(
-                os.path.join(
-                    args.out_folder,
-                    "runner-log-{}.txt".format(datetime_string),
-                ),
-                file_mode="x",  # Use "x" to make sure this specific task id does not conflict.
-            )
-        except:
-            # Try again
-            time.sleep(random.random() * 2)  # Sleep up to 2 seconds.
-            continue
-
-        # If creation worked, exit loop.
-        logger = logging_utils.get_logger(LOGGER_NAME)
-        logger.info(args)
-        break
+    datetime_string: Text = logging_utils.setup_unique_log_file(
+        root_folder_path=args.out_folder,
+        file_name_format=FILE_NAME_FORMAT_MAIN_LOG,
+    )
+    logger = logging_utils.get_logger(LOGGER_NAME)
+    logger.info(args)
 
     exp_config: exp_config_utils.ExpConfig = exp_config_utils.get_config_from_file(
         config_file_loc=args.exp_config

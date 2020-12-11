@@ -26,10 +26,17 @@ class ModelConfig:
     def __getattr__(self, name):
         if name in self._raw_dict:
             return self._raw_dict[name]
-        return super().__getattribute__(name)
+        else:
+            raise AttributeError("Attribute not found: {}".format(name))
 
     def __repr__(self) -> Text:
         return str(self._raw_dict)
+
+    def __getstate__(self):
+        return self._raw_dict
+
+    def __setstate__(self, state):
+        super().__setattr__("_raw_dict", state)
 
 
 def get_config_from_file(config_file_loc: Text) -> ModelConfig:

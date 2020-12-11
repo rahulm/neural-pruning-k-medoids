@@ -30,6 +30,18 @@ FOLDER_NAME_CHECKPOINTS: Text = "checkpoints"
 BEST_CHECKPOINT_EPOCH_TEXT: Text = "best"
 
 
+def clear_mem(logger) -> None:
+    # NOTE: Not sure if this is needed or works well.
+    torch.cuda.empty_cache()
+    time_before = time.time()
+    num_collected = gc.collect()
+    logger.info(
+        "Garbage collected {} items in {} seconds".format(
+            num_collected, time.time() - time_before
+        )
+    )
+
+
 def save_model_and_state_dict_checkpoint(
     model: torch.nn.Module,
     checkpoints_folder_path: Text,
@@ -379,6 +391,8 @@ torch.backends.cudnn.deterministic = {torchcudnn}
                 scheduler=scheduler,
             )
 
+        clear_mem(logger)
+
         # Track best test accuracy.
         best_test_acc: float = initial_test_acc
 
@@ -443,14 +457,7 @@ torch.backends.cudnn.deterministic = {torchcudnn}
             for stat_counter in stat_counters.values():
                 stat_counter.save_default()
 
-            # NOTE: Not sure if this is needed or works well.
-            time_before = time.time()
-            num_collected = gc.collect()
-            logger.info(
-                "Garbage collected {} items in {} seconds".format(
-                    num_collected, time.time() - time_before
-                )
-            )
+            clear_mem(logger)
 
     except Exception as exception:
         logger.error(exception, exc_info=True)
