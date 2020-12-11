@@ -480,6 +480,15 @@ def run_craig_experiments(
 
         # Add a new process to this device, if needed.
         if next_exp_id < num_experiments_total:
+            num_seconds_to_sleep: float = 5
+            logger.info(
+                "Sleeping for {} seconds to allow VRAM to clear...".format(
+                    num_seconds_to_sleep
+                )
+            )
+            time.sleep(num_seconds_to_sleep)
+            logger.info("Waking up from sleep.")
+
             logger.info(
                 "Starting next exp on device {} : ({}) {}".format(
                     res_device_id, next_exp_id, exp_names[next_exp_id]
