@@ -250,7 +250,8 @@ thread_exp_args: {thread_exp_args}
     )
     with torch.cuda.device(thread_device_id):
         res = run_single_experiment(**thread_exp_args)
-        res_q.put(res)
+        res_q.put(res, block=True)
+    res_q.close()
     clear_mem(logger)
 
 
@@ -417,6 +418,7 @@ def run_craig_experiments(
         exp_results_q.put(
             (thread_device_id, thread_exp_id, thread_q.get(block=True))
         )
+        thread_q.close()
 
     # First, attempt to start new processes.
     for device_id, max_procs in enumerate(max_procs_per_device):
