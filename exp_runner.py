@@ -458,7 +458,7 @@ def run_craig_experiments(
         num_experiments_complete += 1
 
         if not res_vals:
-            logger.warn(
+            logger.warning(
                 "Results were empty so exp may have failed. Not saving."
             )
         else:

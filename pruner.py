@@ -448,7 +448,7 @@ def prune_network_with_craig(
 
                 next_layer.in_features = len(weights_to_keep)
             else:
-                logger.warn(
+                logger.warning(
                     "No pruning adjustment made to layer {} of type {}".format(
                         next_layer_i, next_layer_type
                     )
