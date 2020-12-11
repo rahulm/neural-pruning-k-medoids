@@ -457,20 +457,25 @@ def run_craig_experiments(
         # Increment the completion count.
         num_experiments_complete += 1
 
-        # Add results to total results.
-        experiment_vals[res_exp_id] = (
-            [res_exp_id, original_model_name, exp_names[res_exp_id], "",]
-            + original_model_results.copy()
-            + res_vals
-        )
+        if not res_vals:
+            logger.warn(
+                "Results were empty so exp may have failed. Not saving."
+            )
+        else:
+            # Add results to total results.
+            experiment_vals[res_exp_id] = (
+                [res_exp_id, original_model_name, exp_names[res_exp_id], "",]
+                + original_model_results.copy()
+                + res_vals
+            )
 
-        # Incrementally save experiment_vals.
-        write_results_to_csv(
-            experiment_vals=experiment_vals,
-            out_folder_path=out_folder_path,
-            file_name_format=FILE_NAME_FORMAT_MAIN_RESULTS,
-            datetime_string=datetime_string,
-        )
+            # Incrementally save experiment_vals.
+            write_results_to_csv(
+                experiment_vals=experiment_vals,
+                out_folder_path=out_folder_path,
+                file_name_format=FILE_NAME_FORMAT_MAIN_RESULTS,
+                datetime_string=datetime_string,
+            )
 
         logger.info(
             "Jobs complete: {}/{} ({:.2%})".format(
