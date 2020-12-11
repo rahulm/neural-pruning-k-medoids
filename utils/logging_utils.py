@@ -38,6 +38,9 @@ def setup_logging(log_file_loc: Optional[Text] = None, file_mode="a") -> None:
         level="NOTSET",
     )
 
+    # Disable some unnecessary logs.
+    logging.getLogger("matplotlib").setLevel(logging.WARN)
+
 
 def get_logger(name: Optional[Text] = None) -> logging.Logger:
     return logging.getLogger(name=name)
