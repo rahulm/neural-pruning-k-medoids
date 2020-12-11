@@ -11,7 +11,7 @@ import shutil
 import threading
 import time
 from collections import OrderedDict
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Sequence, Text, Tuple, Union
 
 import torch
@@ -630,6 +630,9 @@ def run_experiments(
     # Logging.
     logger = logging_utils.get_logger(name=LOGGER_NAME)
 
+    # Track total run time.
+    full_start_time = time.time()
+
     # Original model.
     original_model_name: Text = os.path.basename(model_checkpoint_path)
     original_size, original_train_acc, original_test_acc = evaluate_model(
@@ -692,6 +695,12 @@ def run_experiments(
             datetime_string=datetime_string,
         )
         logger.info("results written to: {}".format(out_csv_path))
+
+    logger.info(
+        "Total run time: {}".format(
+            str(timedelta(seconds=time.time() - full_start_time))
+        )
+    )
 
 
 ### CLI
