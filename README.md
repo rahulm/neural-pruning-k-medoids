@@ -1,5 +1,5 @@
-# neural-pruning-facility-location
-Neural Pruning with Facility Location, built on the [CRAIG](http://proceedings.mlr.press/v119/mirzasoleiman20a.html) [algorithm](https://github.com/baharanm/craig).
+# neural-pruning-k-medoids
+Neural Pruning with K-Medoids, built on the [CRAIG](http://proceedings.mlr.press/v119/mirzasoleiman20a.html) [algorithm](https://github.com/baharanm/craig).
 
 Paper to be included.
 
