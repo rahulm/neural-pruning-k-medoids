@@ -1,6 +1,7 @@
 """Performs neural pruning with CRAIG or Mussay algorithm."""
 
 import json
+import math
 import os
 import random
 from datetime import datetime
@@ -161,7 +162,7 @@ def get_layer_craig_subset(
         similarity_metric
     ), "similarity_metric must be set for prune_type '{}'".format(prune_type)
 
-    target_num_nodes: int = int(
+    target_num_nodes: int = math.ceil(
         (1 - prune_percent_per_layer) * original_num_nodes
     )
 
@@ -317,6 +318,8 @@ def prune_network_with_craig(
     one sequence, and that there are no non-FC layers after the last FC layer
     of that sequence."""
     logger = logging_utils.get_logger(LOGGER_NAME)
+
+    model = model.to(torch.device("cpu"))
 
     # Get params for each layer.
     layer_params: Dict = prune_config.prune_params[
@@ -558,7 +561,6 @@ def prune_network(
             )
         )
         if prune_config.prune_type == "craig":
-            model = model.to(torch.device("cpu"))
             prune_network_with_craig(
                 model=model, prune_config=prune_config, **kwargs
             )
