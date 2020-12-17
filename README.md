@@ -1,7 +1,7 @@
 # neural-pruning-k-medoids
 Neural Pruning with K-Medoids, built on the [CRAIG](http://proceedings.mlr.press/v119/mirzasoleiman20a.html) [algorithm](https://github.com/baharanm/craig).
 
-Paper to be included.
+Paper: [Neural_Pruning_with_K_Medoids.pdf](Neural_Pruning_with_K_Medoids.pdf)
 
 
 ## Brief overview
